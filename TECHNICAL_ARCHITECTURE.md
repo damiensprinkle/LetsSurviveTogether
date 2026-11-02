@@ -1,0 +1,118 @@
+# Technical Architecture
+
+Engine: **Unreal Engine 5.7.4** · Toolchain: Visual Studio 2026 (MSVC 14.44) · C++ module: `TacticalHorror` (prefix `TH`)
+
+## Where the project came from
+
+| Source | What we took | Notes |
+|---|---|---|
+| `FPS_Horror_Template 5.7` (Patreon, auto-converted from 5.2) | **Everything** — this is the base. Character, interaction, doors, puzzles, notes, inspect, flashlight, night vision, footsteps, Demo map, MetaHuman Koda | Blueprint-only originally |
+| `UnrealFPSHorrorTemplate` (UE 5.7 First Person template, Horror variant) | `Characters/`, `FirstPerson/`, `Input/`, `Variant_Horror/`, missing `LevelPrototyping/` files | Modern first-person arms + anims, flickering horror light, sprint/stamina. It has **no gunplay** |
+| UE 5.7 engine template resources | `Content/Weapons/` (rifle, pistol, launcher meshes + fire sound) | Placeholder weapons; `Muzzle` socket |
+
+Neither original project was modified. Backups of the two reparented Blueprints are in `Saved/PreReparentBackup/`.
+
+## Blueprint ↔ C++ split
+
+The template's Blueprints keep doing what they already do well. C++ adds the systems the GDD needs to be robust and replicated.
+
+```
+ACharacter
+└── ATHCharacter (C++)            health, weapons, downed/revive, speed multipliers
+    └── BP_FirstPersonCharacter   camera, movement input, interaction, flashlight, NV, footsteps (template)
+        └── BP_Koda               MetaHuman body (the pawn the Demo map spawns)
+
+AGameMode
+└── ATHGameMode (C++)             default classes, friendly fire, team wipe -> restart
+    └── BP_FirstPersonGameMode    DefaultPawn = BP_Koda (Demo map's override)
+```
+
+`ATHCharacter` intentionally creates **no camera, mesh or movement bindings** so it cannot clash with the template.
+
+## Source layout
+
+```
+Source/TacticalHorror/
+├── Core/          THGameInstance, THGameMode, THGameState (mission phase), THPlayerState (debrief stats)
+├── Player/        THCharacter, THCharacterMovementComponent, THPlayerController, THBodyAnimInstance, THBodyAnimSet
+│   └── Components/THHealthComponent
+├── Weapons/       THWeaponBase, THWeaponComponent, THWeaponData, THWeaponTypes, THShellCasing, THAnimNotify_WeaponSound
+├── Settings/      THAudioSettingsSubsystem
+├── UI/            THAudioSettingsWidget
+└── Multiplayer/   THSessionSubsystem
+```
+
+Planned (not yet created): `Equipment/`, `AI/`, `Missions/` — see TASKS.md. Interaction stays in the template's Blueprint system (`BPI_Interaction`) unless it needs replication.
+
+## Systems
+
+### Health — `UTHHealthComponent`
+- Server-authoritative. Hooks the owner's `OnTakeAnyDamage`, so `ApplyDamage`/`ApplyPointDamage` from anything works.
+- States: `Alive → Downed → Dead`. Downed starts a bleed-out timer (`BleedOutDuration`, default 30 s). `Revive()` restores `ReviveHealthFraction`.
+- Damage while downed is **ignored** (placeholder until the GDD decides).
+- Friendly fire is asked of `ATHGameMode::IsFriendlyFireEnabled()` (default off).
+- When any player stops being Alive the GameMode checks `ATHGameState::AreAllPlayersIncapacitated()`; a team wipe sets phase `Failed` and `ServerTravel("?restart")` after `TeamWipeRestartDelay`.
+- Enemies/props: set `bCanBeDowned = false`.
+
+### Revive — `ATHCharacter`
+- Hold **E** while looking at a downed teammate within `ReviveRange` for `ReviveDuration` (3 s). Server-timed; cancels if either player moves away or goes down.
+- The revive action is created at runtime with `bConsumeInput = false`, so the template's Interact (also E) keeps working.
+- `GetReviveProgress()` for a UI bar (not built yet).
+
+### Weapons
+- **`UTHWeaponData`** (Data Asset) — all tuning: damage, headshot multiplier, CS-style range falloff, RPM, fire modes, magazine/reserve, reload/equip time, accuracy model, recoil pattern, ADS, move speed, sounds/FX.
+- **`ATHWeaponBase`** — hitscan behaviour. Blueprint subclasses (`BP_Weapon_Rifle`, `BP_Weapon_Pistol`) set mesh + data and can implement `On Fired`, `On Reload Started/Finished`, `On Equipped/Unequipped`, `On Fire Mode Changed`, and override `AttachToOwner`.
+- **`UTHWeaponComponent`** — loadout spawn (server), switching (client-predicted), ADS (FOV lerp, replicated for movement speed), weapon input.
+
+**Gunplay model (CS-inspired)**
+- *Recoil:* a fixed, learnable per-shot pattern (`RecoilPattern`, degrees). `ViewKickFraction` of it moves the camera; the rest only moves bullets. Spray index resets after `RecoilResetDelay` without firing. Camera recovers at `ViewRecoveryRate` after firing stops.
+- *Accuracy:* cone half-angle from standing/moving (scaled by speed)/air, + per-shot spray growth, × crouch and ADS multipliers. `bFirstShotAccurate` gives a perfect first shot when standing still.
+- *Damage:* `Damage × RangeModifierPer10m^(distance/10m) × (HeadshotMultiplier if bone ∈ HeadBoneNames)`.
+
+**Networking**
+- Owning client fires instantly (effects, view kick, predicted ammo, predicted impact) → `ServerFire(origin, view rotation, spray index, shot number)` (reliable).
+- Server validates: equipped, not reloading, ammo, fire rate (75% tolerance), unique increasing shot number, origin within `MaxOriginError` of the pawn's eyes, spray index within ±2 of its own. It then re-traces using the **same deterministic recoil + seeded spread** (`SpreadSeed` replicated once, hashed with shot number) and applies damage.
+- Cosmetics to everyone else via unreliable multicast.
+- Not done yet: lag compensation (rewinding targets). Fine for co-op vs AI; revisit if PvP or fast enemies show hit-reg complaints.
+
+**Collision**: custom trace channel **`Weapon`** (`ECC_GameTraceChannel1`, default Block). `ATHCharacter` makes capsules ignore it and meshes block it, so hits report bone names. Give enemies the same treatment.
+
+**Input**: if `WeaponMappingContext` is empty the component builds one at runtime — LMB fire, RMB aim, R reload, 1/2/3 slots, wheel cycle, B fire mode — at priority 1, above the template's `IMC_Default`. That makes RMB aim instead of the template's camera zoom while a weapon is held. Replace with real `IA_*`/`IMC_*` assets whenever you like (assign them on the component in `BP_FirstPersonCharacter`).
+
+**Shell casings**: `PlayFireEffects` (so on every machine that sees the shot, never the dedicated server) spawns an `ATHShellCasing` at the muzzle + `ShellEjectOffset` (aim space). Not replicated, physics-only collision (bullets and interaction traces ignore it), passes through pawns, CCD on, one bounce sound on first impact, `ShellLifetime` and `MaxShellCasings` per weapon. All settings are in the *Shell Casing* section of the weapon data.
+
+**What other players see (third person)**
+- Each weapon has two copies of its mesh. `Mesh` is the first-person viewmodel (arms included) on the owner's camera, *Only Owner See*. `ThirdPersonMesh` is the same mesh with the arm material slots hidden (`ThirdPersonHiddenMaterialSlots`) and the spare magazine bone hidden (`ThirdPersonHiddenBones`), holding frame 0 of the idle animation, *Owner No See*. It is attached to the body's `hand_r` and placed every frame so its `ThirdPersonGripBone` (the rig's own right hand) sits on the body's hand, with the barrel along the body's facing and aim pitch. Tune with `ThirdPersonGripOffset` / `ThirdPersonRotationOffset` in the weapon data.
+- Muzzle flash, shell casings and the shot sound come from whichever copy this machine shows (`GetVisibleMesh`).
+- The body is the template's extra `SkeletalMesh` component (ACharacter's own `Mesh` is empty); `UTHWeaponComponent::GetBodyMesh()` finds it. At BeginPlay the weapon component replaces its Anim Blueprint (`ABP_Manny`) with **`UTHBodyAnimInstance`** (`BodyAnimClass`; clear it to get `ABP_Manny` back).
+- `UTHBodyAnimInstance` is pure C++ (native pose evaluation, no Anim Blueprint). Legs: idle / four-way walk / crouch blended by velocity direction, speed-matched play rate, shared phase. Upper body (from `spine_01`): the held weapon's aiming pose in mesh-space rotation, so the torso stays on target while walking. Then the pitch aim offset, then actions: fire is additive, reload and equip replace the upper body and are stretched to `ReloadDuration` / `EquipDuration`. It reads only replicated state (velocity, crouch, aim pitch, current weapon, reload), and actions are started where the weapon already plays effects for everyone.
+- What to play: `UTHBodyAnimSet` data assets in `Content/Characters/BodyAnimSets`. `DA_Body_Unarmed` (on the weapon component) provides the legs for all sets: Lyra UE5 male walk / crouch. `DA_Body_Rifle` / `DA_Body_Pistol` (on `DA_M4` / `DA_G17` → `BodyAnimSet`) supply the upper-body pose (UE5 template `MF_*_Idle_ADS`), aim offset and Lyra fire / reload / equip. Built by `Scripts/Tools/setup_body_anims.py`.
+- `ATHCharacter::OnStartCrouch/OnEndCrouch` move that body up/down with the capsule (ACharacter only does this for its own `Mesh`).
+- Look at it alone: `th.ThirdPersonView "distance angle height [lookheight]"` views your own character from outside (see Scripts/Tools/README.md).
+
+**Movement speed**: `UTHCharacterMovementComponent::GetMaxSpeed()` multiplies whatever the Blueprint sets (walk/sprint/crouch) by the weapon/ADS/downed multiplier.
+
+### Audio settings — `UTHAudioSettingsSubsystem` + `UTHAudioSettingsWidget`
+- Game-instance subsystem, `Config=GameUserSettings` (saved per user in `Saved/Config/<platform>/GameUserSettings.ini`). Local only.
+- **Master** sets the audio device's transient primary volume (reset to 1 on shutdown so play-in-editor doesn't leave the editor quiet). **Gunshots** multiplies the fire sound volume in `ATHWeaponBase::PlayFireEffects`. To add a category: a property + setter here, a multiplier where those sounds play, a row in the widget. If many categories are needed, switch to Sound Classes + a Sound Mix.
+- `ATHPlayerController` toggles the menu with **Escape** or **P** (plain key bindings, not Enhanced Input, so the pawn's contexts can't remove them). Escape never reaches the game in play-in-editor, so use P there. The game keeps running (co-op); input goes UI-only while open. Console: `ToggleAudioSettings`.
+- The widget builds its layout in C++. Set `AudioSettingsWidgetClass` on the controller to a Widget Blueprint subclass to restyle it.
+
+### Sessions — `UTHSessionSubsystem`
+- `HostSession(MapPath, MaxPlayers, bLAN)` → creates session + `ServerTravel(map?listen)`; `FindSessions`, `JoinSession(index)`, `LeaveSession`. Blueprint delegates for each.
+- Uses OnlineSubsystem **Null** (LAN) today (`DefaultEngine.ini`). EOS later only touches config + this class.
+
+### Mission state — `ATHGameState`
+- Replicated `ETHMissionPhase` (Preparation, Briefing, Deployment, Active, Extraction, Debrief, Failed) + `OnMissionPhaseChanged`. Mission/objective framework is Milestone 5.
+
+## Conventions
+- C++ classes `TH` prefix; Blueprints `BP_`, data assets `DA_`, input `IA_`/`IMC_`, widgets `WBP_`.
+- New gameplay systems = C++ component or subsystem + Blueprint/data configuration. No giant classes.
+- Server authority for damage, AI, objectives, important interactions. Every replicated feature gets a 2-player PIE test.
+- Data Assets for tuning. Don't hardcode weapon/mission numbers in code.
+- New C++ content folders go under `Content/` by feature (`Weapons/`, `Missions/`, `AI/`...). The template's folders (`Blueprint/`, `Interaction/`...) stay as they are.
+
+## Building
+- Open `LetsSurviveTogether.uproject` → "rebuild modules?" → Yes, or
+- `"C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" LetsSurviveTogetherEditor Win64 Development -Project="<path>\LetsSurviveTogether.uproject" -WaitMutex`
+- Re-runnable editor setup script: `Scripts/setup_weapons.py` (see header for the command).
