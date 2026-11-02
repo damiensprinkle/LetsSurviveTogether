@@ -13,7 +13,7 @@ Small, bounded tasks. Each should end with: compiles, tested in PIE (2 players w
 3. **Red flashing screen while walking** — fixed. Cause was the Lyra `ABP_Mannequin_Base` on the body (Orientation Warping debug draw in `ABP_ItemAnimLayersBase`); the body now uses the template's `ABP_Manny`. To get Lyra locomotion back, untick *Enable Debug Draw* on the Orientation Warping node and re-test walking.
 4. **Two-player test.** Play settings → Number of Players 2, Net Mode *Play As Listen Server*. Check: both players see each other's weapons, shots hurt only with friendly fire on (`BP_FirstPersonGameMode` → *Friendly Fire*), ammo and switching stay in sync.
 5. **Downed / revive.** Temporarily enable friendly fire, shoot a teammate down, hold **E** on them for 3 s. Down both players → mission restarts after 5 s.
-6. **First commit.** `git add -A && git commit -m "Initial project"` in this folder (LFS is configured for .uasset/.umap).
+6. ~~First commit~~ done 2026-11-02 (`218f0e2`). LFS covers .uasset/.umap/.png/.wav/.fbx/.tga/.jpg/.psd. No remote is set up yet.
 
 ## Open from the 2026-11-01 session
 - **Listen to the audio.** None of it has been heard yet, because automated tests run with `-nosound`. Check footsteps (walk / Shift / crouch), gunshots, and the reload foley on the M4 and G17, both normal and empty reloads.
@@ -25,7 +25,6 @@ Small, bounded tasks. Each should end with: compiles, tested in PIE (2 players w
 - **Audio settings menu** (P in the editor, Escape or P in a packaged game): check that both sliders work by ear, that values survive a restart, and that the mouse cursor and look input come back after closing it. Labels are AI placeholders (AI_CONTENT.md).
 - **Shell casings**: check in play that they leave the ejection port, land, clink once, and don't pile up. Tune the *Shell Casing* section of `DA_G17` / `DA_M4` (`ShellEjectOffset`, `ShellEjectVelocity`), or the table in `Scripts/Tools/setup_shells.py`, which overwrites those values when re-run. Also check them in a two-player game. The G17 uses the .45 casing as asked; a 9x19 casing is in `SourceArt/AmmunitionMeshesTextures/Bullet 9x19` if wanted.
 - The raw ammo FBX/PNG pack was moved from `Content/Weapons/AmmunitionMeshesTextures` to `SourceArt/AmmunitionMeshesTextures` (sources live outside Content).
-- The first git commit hasn't been made yet.
 - **Third-person body and weapons** (what other players see): the body now holds the current weapon (aiming pose, walk / crouch legs, aim pitch, fire / reload / equip), and the gun is a copy in its hand instead of floating first-person arms. Checked off-screen with `th.ThirdPersonView`, but not yet in a real two-player session: run task 4 above and look at each other standing, walking in all directions, crouching, looking up and down, firing, reloading and switching weapons. Known rough edges:
   - The left hand isn't locked to the gun; it's where the animation puts it (close on the M4, close on the G17). Hand IK would fix it if it bothers you.
   - Legs are the unarmed walk with the upper body replaced. A male rifle/pistol walk set on the UE5 skeleton (free packs exist) would move better. Drop it into `setup_body_anims.py`'s table.

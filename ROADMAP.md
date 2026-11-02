@@ -6,7 +6,7 @@ Legend: ✅ done (compiles; editor-verified where noted) · 🟡 code done, need
 ## Milestone 1 — Project Foundation
 - ✅ Project selected: FPS_Horror_Template (UE 5.7) + C++ module `TacticalHorror`
 - ✅ C++/Blueprint conventions (TECHNICAL_ARCHITECTURE.md)
-- 🟡 Git repository (initialised with LFS rules; first commit is yours to make — see TASKS.md)
+- ✅ Git repository with LFS (first commit 2026-11-02; no remote yet)
 - ✅ Enhanced Input (template IMC_Default + runtime weapon context)
 - ✅ First-person character (template BP, now on `ATHCharacter`)
 - ✅ Basic movement (template)
