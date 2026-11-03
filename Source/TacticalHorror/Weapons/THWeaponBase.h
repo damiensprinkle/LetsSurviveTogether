@@ -234,6 +234,16 @@ private:
 	FTransform ThirdPersonHandOffset;
 	bool bHasThirdPersonHandOffset = false;
 
+	/** World time the third-person weapon appears, part-way through the body's equip animation. */
+	double ThirdPersonRevealTime = 0.0;
+
+	/** The weapon rig's finger bones (right, left; thumb to pinky), found once per mesh. */
+	TArray<FName> ThirdPersonRigFingers[2][5];
+	TWeakObjectPtr<const USkeletalMesh> ThirdPersonRigFingersMesh;
+	/** The body's right-hand finger bones, for placing the weapon in that hand. */
+	TArray<FName> ThirdPersonBodyFingers[5];
+	TWeakObjectPtr<const USkeletalMesh> ThirdPersonBodyFingersMesh;
+
 	/** This weapon's casings still in the world, oldest first, so the count can be capped. */
 	TArray<TWeakObjectPtr<class ATHShellCasing>> ShellCasings;
 

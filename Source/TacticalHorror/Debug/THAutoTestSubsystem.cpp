@@ -43,13 +43,16 @@ static TAutoConsoleVariable<int32> CVarThirdPerson(
 	TEXT("1 = watch your own character from outside, as other players see it (weapon in hand, body animation). 0 = normal view. Camera placement: th.ThirdPersonView."));
 static TAutoConsoleVariable<FString> CVarThirdPersonView(
 	TEXT("th.ThirdPersonView"), TEXT("200 60 20 40"),
-	TEXT("Camera for th.ThirdPerson: \"distance angle height [lookheight]\" - distance (cm), angle around the character (0 = in front, 90 = its right, 180 = behind), height, and the point it looks at above the character's centre (default 20)."));
+	TEXT("Camera for th.ThirdPerson: \"distance angle height [lookheight]\" - distance (cm), angle around the character (0 = in front, 90 = its right, 180 = behind), height, and the point it looks at above the character's centre (default 20). ")
+	TEXT("Optional fifth value: a body bone to look at instead, e.g. \"40 -60 0 0 hand_l\" for a close-up of the left hand."));
 static TAutoConsoleVariable<float> CVarAutoWalkAngle(
 	TEXT("th.AutoWalkAngle"), 0.0f, TEXT("Direction th.AutoWalk moves in, degrees from facing (90 = strafe right, 180 = backwards)."));
 static TAutoConsoleVariable<float> CVarAutoLookPitch(
 	TEXT("th.AutoLookPitch"), 0.0f, TEXT("Hold the local player's view at this pitch in degrees (0 = off; use 0.01 for level)."));
 static TAutoConsoleVariable<float> CVarAutoReloadAfter(
 	TEXT("th.AutoReloadAfter"), 0.0f, TEXT("Reload the held weapon once, this many seconds in (0 = off)."));
+static TAutoConsoleVariable<float> CVarAutoSwitchAfter(
+	TEXT("th.AutoSwitchAfter"), 0.0f, TEXT("Switch to the other weapon once, this many seconds in (0 = off)."));
 static TAutoConsoleVariable<FString> CVarStripComponents(
 	TEXT("th.StripComponents"), TEXT(""), TEXT("Comma-separated name fragments; matching components are destroyed on the local pawn. For bisecting Blueprint issues."));
 
@@ -156,6 +159,16 @@ void UTHAutoTestSubsystem::Tick(float DeltaTime)
 		PC->SetControlRotation(Control);
 	}
 
+	const float SwitchAfter = CVarAutoSwitchAfter.GetValueOnGameThread();
+	if (SwitchAfter > 0.0f && Elapsed >= SwitchAfter && !bAutoSwitched)
+	{
+		bAutoSwitched = true;
+		if (UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>(); Weapons && Weapons->GetWeapons().Num() > 1)
+		{
+			Weapons->EquipWeaponAtIndex(Weapons->GetWeapons().IndexOfByKey(Weapons->GetCurrentWeapon()) == 0 ? 1 : 0);
+		}
+	}
+
 	const float ReloadAfter = CVarAutoReloadAfter.GetValueOnGameThread();
 	if (ReloadAfter > 0.0f && Elapsed >= ReloadAfter && !bAutoReloaded)
 	{
@@ -247,7 +260,7 @@ void UTHAutoTestSubsystem::TickThirdPersonView(APlayerController* PC, APawn* Paw
 {
 	TArray<FString> Values;
 	CVarThirdPersonView.GetValueOnGameThread().ParseIntoArrayWS(Values);
-	if (Values.Num() != 3 && Values.Num() != 4)
+	if (Values.Num() < 3 || Values.Num() > 5)
 	{
 		Values = { TEXT("200"), TEXT("60"), TEXT("20"), TEXT("40") };
 	}
@@ -275,8 +288,15 @@ void UTHAutoTestSubsystem::TickThirdPersonView(APlayerController* PC, APawn* Paw
 	const float Distance = FCString::Atof(*Values[0]);
 	const float Angle = FCString::Atof(*Values[1]);
 	const float Height = FCString::Atof(*Values[2]);
-	const float TargetHeight = Values.Num() == 4 ? FCString::Atof(*Values[3]) : 20.0f;
-	const FVector Target = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, TargetHeight);
+	const float TargetHeight = Values.Num() >= 4 ? FCString::Atof(*Values[3]) : 20.0f;
+	FVector Target = Pawn->GetActorLocation() + FVector(0.0f, 0.0f, TargetHeight);
+	// Optional fifth value: a body bone to look at instead (e.g. hand_l), with the look height added on top
+	const UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>();
+	const USkeletalMeshComponent* Body = Weapons ? Weapons->GetBodyMesh() : nullptr;
+	if (Values.Num() == 5 && Body && Body->GetBoneIndex(FName(*Values[4])) != INDEX_NONE)
+	{
+		Target = Body->GetBoneLocation(FName(*Values[4])) + FVector(0.0f, 0.0f, TargetHeight);
+	}
 	const FVector Direction = Pawn->GetActorForwardVector().RotateAngleAxis(Angle, FVector::UpVector);
 	const FVector Location = Target + Direction * Distance + FVector(0.0f, 0.0f, Height);
 	Camera->SetActorLocationAndRotation(Location, (Target - Location).Rotation());
@@ -288,6 +308,10 @@ void UTHAutoTestSubsystem::TickThirdPersonView(APlayerController* PC, APawn* Paw
 	// The camera manager points the view at this camera; keep the character facing the way it did when watching
 	// started (the body and the weapon in its hand follow the actor's yaw)
 	Pawn->SetActorRotation(FRotator(0.0f, ThirdPersonYaw, 0.0f));
+	// WASD move relative to the view's yaw, so hold that to the frozen facing too (mouse left/right does nothing here)
+	FRotator Control = PC->GetControlRotation();
+	Control.Yaw = ThirdPersonYaw;
+	PC->SetControlRotation(Control);
 }
 
 void UTHAutoTestSubsystem::StripComponents(APawn* Pawn)

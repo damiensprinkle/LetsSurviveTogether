@@ -8,6 +8,34 @@
 class UAnimSequence;
 class UBlendSpace;
 class UTHBodyAnimSet;
+class USkeletalMesh;
+struct FReferenceSkeleton;
+
+/**
+ * How a hand holds the weapon, taken from the first-person rig's hand, in aim space relative to the weapon's grip
+ * point (cm). The body's hand is turned and placed so its palm matches, and its fingers point the same ways, which
+ * works across skeletons with different hand bone axes.
+ */
+struct FTHHandShape
+{
+	static constexpr int32 NumFingers = 5; // thumb, index, middle, ring, pinky
+	static constexpr int32 MaxJoints = 4;
+
+	bool bValid = false;
+	/** Middle of the knuckles (where the fingers start). */
+	FVector Palm = FVector::ZeroVector;
+	/** X from the wrist to the knuckles, Y across the knuckles toward the index finger. */
+	FQuat Frame = FQuat::Identity;
+	/** Per finger, the direction from each joint to the next. */
+	FVector FingerDirections[NumFingers][MaxJoints];
+	int32 NumDirections[NumFingers] = {};
+
+	/** Finger bones below Hand, found by name (thumb / index / middle / ring / pinky, metacarpals skipped), base first. */
+	static void FindFingers(const FReferenceSkeleton& Skeleton, FName Hand, TArray<FName> (&OutFingers)[NumFingers]);
+	/** Palm frame from the wrist and the index / middle / pinky knuckles. */
+	static FQuat MakeFrame(const FVector& Wrist, const FVector& Index, const FVector& Middle, const FVector& Pinky);
+	static FVector MakePalm(const FVector& Wrist, const FVector& Index, const FVector& Middle, const FVector& Pinky);
+};
 
 /** Everything the worker thread needs to build one frame's pose. Filled on the game thread. */
 struct FTHBodyPoseSnapshot
@@ -26,9 +54,13 @@ struct FTHBodyPoseSnapshot
 	/** Replaces the upper body; its weight is the share of the legs that didn't come from the held weapon's own set. */
 	FSample UpperBody;
 	FName UpperBodyRootBone;
+	/** Turn of the upper body about the vertical (degrees, + = character's right); HeadBone turns back by the same. */
+	float UpperBodyYaw = 0.0f;
+	FName UpperBodyYawHeadBone;
 
 	const UBlendSpace* AimOffset = nullptr;
 	float AimOffsetInput = 0.0f;
+	float AimOffsetWeight = 1.0f;
 
 	/** Upper-body actions (fire, reload, equip): additive, or replacing the upper body if not additive. */
 	TArray<FSample, TInlineAllocator<4>> Actions;
@@ -50,6 +82,27 @@ struct FTHBodyPoseSnapshot
 	bool bLeftHandFollowsRight = false;
 	FName RightArmBones[3];
 	FName LeftArmBones[3];
+
+	/** Hand shapes from the weapon's rig (replace the target positions above when valid) and the body's finger bones. */
+	FTHHandShape RightShape;
+	FTHHandShape LeftShape;
+	FVector RightShoulderOffset = FVector::ZeroVector;
+	FVector LeftShoulderOffset = FVector::ZeroVector;
+
+	/**
+	 * Lowered carry: the weapon rides the right hand; the left hand is pulled onto the weapon's left grip by this weight.
+	 * The weapon's place comes from GunFromRightHand applied to the posed right hand.
+	 */
+	float LoweredLeftWeight = 0.0f;
+	FTransform GunFromRightHand = FTransform::Identity;
+	FVector LeftPalmInGun = FVector::ZeroVector;
+	FQuat LeftFrameInGun = FQuat::Identity;
+	FQuat HoldRotation = FQuat::Identity;
+	FVector LoweredLeftOffset = FVector::ZeroVector;
+	FQuat LoweredLeftTurn = FQuat::Identity;
+
+	TArray<FName> RightFingers[FTHHandShape::NumFingers];
+	TArray<FName> LeftFingers[FTHHandShape::NumFingers];
 
 	/** Fingers copied from this frame (bones below the hand bones), weighted by HandIKWeight. */
 	FSample HandPose;
@@ -75,6 +128,20 @@ struct FTHWeaponGrip
 	bool bLeftHand = false;
 	/** Left hand keeps the animation's place relative to the right hand (LeftHandTarget becomes a nudge from there). */
 	bool bLeftHandFollowsRight = false;
+	/** The weapon rig's hands. When valid, the hand targets and rotations above become nudges to these. */
+	FTHHandShape RightShape;
+	FTHHandShape LeftShape;
+	/** Weapon's place relative to the right hand bone, and the rig's left palm in the weapon's own space (unscaled). */
+	bool bHasGunFromRightHand = false;
+	FTransform GunFromRightHand = FTransform::Identity;
+	FVector LeftPalmInGun = FVector::ZeroVector;
+	FQuat LeftFrameInGun = FQuat::Identity;
+	/** Weapon rotation relative to the aim (its CameraHoldOffset rotation): turns weapon space back into aim axes. */
+	FQuat HoldRotation = FQuat::Identity;
+
+	/** Shoulder moves (aim space), made by turning each clavicle before the arms are solved; bends the elbows when the hands stay put. */
+	FVector RightShoulderOffset = FVector::ZeroVector;
+	FVector LeftShoulderOffset = FVector::ZeroVector;
 
 	/** Aim used for third-person presentation, in the body mesh's component space. */
 	static FQuat GetAimInComponentSpace(const APawn* Pawn, const USceneComponent* Body, const FRotator& RotationOffset);
@@ -119,6 +186,12 @@ public:
 	/** How much the hands are on the weapon's grip points (0 while a full-pose action like reload has them). */
 	float GetHandIKAlpha() const { return HandIKAlpha; }
 
+	/** Brings the weapon up from a lowered carry (the held set's LoweredSet) and keeps it up for its ReadyHoldTime. Call on every shot. */
+	void RaiseWeapon();
+
+	/** 1 = weapon up (aiming set), 0 = lowered carry. Always 1 for sets without a LoweredSet. */
+	float GetReadyAlpha() const { return ReadyAlpha; }
+
 protected:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
@@ -156,9 +229,18 @@ private:
 	float LocomotionPhase = 0.0f;
 	float IdleTime = 0.0f;
 	float HandIKAlpha = 0.0f;
+	float ReadyAlpha = 0.0f;
+	float LoweredLeftAlpha = 0.0f;
+	/** World time the weapon was last aimed or fired. */
+	double LastReadyTime = -1.0e6;
 
 	bool bHasWeaponGrip = false;
 	FTHWeaponGrip WeaponGrip;
+
+	/** The body's finger bones, found once per mesh and hand bone. */
+	TWeakObjectPtr<const USkeletalMesh> FingersMesh;
+	FName FingersHands[2];
+	TArray<FName> Fingers[2][FTHHandShape::NumFingers];
 
 	TArray<FAction> Actions;
 	TMap<const UAnimSequence*, float> AnimSpeedCache;

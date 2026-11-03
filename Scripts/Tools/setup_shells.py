@@ -61,6 +61,13 @@ for key, (fbx, diff, nrm, real_len) in shells.items():
     mel.set_material_instance_texture_parameter_value(mi, "NormalMap", tex_n)
     mel.set_material_instance_scalar_parameter_value(mi, "NormalMapWeight", 1.0)
     mel.set_material_instance_scalar_parameter_value(mi, "Shininess", 20.0)
+    # The pack is spec/gloss (colour in *_SPECULAR, *_DIFFUSE is dark grime): once shell_metal_material.py has built
+    # M_Shell_Metal and the T_Shell_<key>_S textures, use those so the casings stay brass / copper
+    metal = f"{DEST}/M_Shell_Metal"
+    if eal.does_asset_exist(metal) and eal.does_asset_exist(f"{d}/T_Shell_{key}_S"):
+        mi.set_editor_property("parent", eal.load_asset(metal))
+        mel.set_material_instance_texture_parameter_value(mi, "ColorMap", eal.load_asset(f"{d}/T_Shell_{key}_S"))
+        mel.set_material_instance_texture_parameter_value(mi, "NormalMap", tex_n)
     mel.update_material_instance(mi)
     eal.save_loaded_asset(mi, False)
 

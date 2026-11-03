@@ -79,6 +79,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Upper Body")
 	FName UpperBodyRootBone = TEXT("spine_01");
 
+	/**
+	 * Turns the upper body (from UpperBodyRootBone) about the vertical, in degrees; + turns it to the character's right.
+	 * Aiming animations often stand bladed (torso turned ~30 degrees to the right), which looks like side-stepping when
+	 * the legs walk forward. A negative value squares the torso up; HeadBone turns back so the head still looks ahead.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Upper Body", meta = (Units = "Degrees"))
+	float UpperBodyYaw = 0.0f;
+
+	/** Turned back by UpperBodyYaw so the head keeps facing forward. None = the head turns with the torso. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Upper Body")
+	FName UpperBodyYawHeadBone = TEXT("neck_01");
+
 	/** Additive aim offset; only its pitch is used (the body turns with the view). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Upper Body")
 	TObjectPtr<UBlendSpace> AimOffset;
@@ -99,6 +111,13 @@ public:
 	/** Stretched to the weapon's EquipDuration (but never faster than ×2). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions")
 	TObjectPtr<UAnimSequence> Equip;
+
+	/**
+	 * Share of the Equip animation before the weapon appears in the hand (third person). The draw brings the empty hand
+	 * up from the holster; the weapon shows once the hand is in front. 0 = visible from the start.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions", meta = (ClampMin = 0, ClampMax = 1))
+	float EquipRevealFraction = 0.6f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions", meta = (ClampMin = 0, Units = "s"))
 	float ActionBlendTime = 0.15f;
@@ -142,4 +161,30 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand Pose")
 	bool bHandPoseLeft = true;
+
+	// Lowered carry: while the player isn't aiming and hasn't shot for ReadyHoldTime, the body plays LoweredSet instead
+	// (its own idle and walks, e.g. rifle held low) with the weapon in its right hand. Aiming or shooting brings this
+	// set back. Each machine works it out from replicated aiming and the shots it sees.
+
+	/** Body set for carrying the weapon lowered. Empty = always this set. Its hand IK and hand pose are not used. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lowered")
+	TObjectPtr<UTHBodyAnimSet> LoweredSet;
+
+	/**
+	 * Used when this set is someone's LoweredSet: pull the left hand onto the weapon's left grip. Off = the left hand
+	 * stays where this set's animations put it (for a pose authored to cradle the weapon).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lowered")
+	bool bLeftHandOnWeapon = true;
+
+	/** Seconds after the last shot (or letting go of aim) before lowering. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lowered", meta = (ClampMin = 0, Units = "s"))
+	float ReadyHoldTime = 7.0f;
+
+	/** Seconds to bring the weapon up, and to lower it. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lowered", meta = (ClampMin = 0.01, Units = "s"))
+	float RaiseTime = 0.15f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Lowered", meta = (ClampMin = 0.01, Units = "s"))
+	float LowerTime = 0.5f;
 };

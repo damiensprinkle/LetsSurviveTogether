@@ -4,10 +4,20 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/BlendSpace.h"
 #include "AnimationRuntime.h"
+#include "Engine/SkeletalMesh.h"
+#include "ReferenceSkeleton.h"
 #include "TwoBoneIK.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "TacticalHorror.h"
+
+static TAutoConsoleVariable<int32> CVarDebugHandFingers(
+	TEXT("th.DebugHandFingers"), 1,
+	TEXT("1 = third-person fingers copy the weapon rig's fingers (normal). 0 = keep the body animation's fingers, for comparison."));
+
+static TAutoConsoleVariable<float> CVarUpperBodyYawTune(
+	TEXT("th.UpperBodyYawTune"), 0.0f,
+	TEXT("Live tuning: degrees added to the held body set's Upper Body Yaw (+ = character's right). Copy the sum into the set."));
 
 namespace
 {
@@ -194,7 +204,7 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 				FPoseContext Additive(Output, true);
 				FAnimationPoseData AdditiveData(Additive);
 				Snapshot.AimOffset->GetAnimationPose(Samples, FAnimExtractContext(0.0), AdditiveData);
-				AccumulateMasked(Output, Additive, 1.0f, Type, Mask);
+				AccumulateMasked(Output, Additive, FMath::Clamp(Snapshot.AimOffsetWeight, 0.0f, 1.0f), Type, Mask);
 			}
 		}
 	}
@@ -224,6 +234,30 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 		}
 	}
 
+	// Square up a bladed torso: turn the upper body about the vertical, and the neck back so the head still looks ahead
+	if (!FMath::IsNearlyZero(Snapshot.UpperBodyYaw))
+	{
+		TArray<FTransform> Space;
+		ComputeComponentSpace(Pose, Space);
+		const FQuat Turn = FRotator(0.0f, Snapshot.UpperBodyYaw, 0.0f).Quaternion();
+		auto TurnBone = [&](FCompactPoseBoneIndex Bone, const FQuat& By)
+		{
+			const FCompactPoseBoneIndex Parent = Bones.GetParentBoneIndex(Bone);
+			FTransform BoneSpace = Space[Bone.GetInt()];
+			BoneSpace.SetRotation((By * BoneSpace.GetRotation()).GetNormalized());
+			Pose[Bone] = Parent.IsValid() ? BoneSpace.GetRelativeTransform(Space[Parent.GetInt()]) : BoneSpace;
+		};
+		TurnBone(UpperRoot, Turn);
+		const int32 HeadMesh = Snapshot.UpperBodyYawHeadBone.IsNone() ? INDEX_NONE : Bones.GetPoseBoneIndexForBoneName(Snapshot.UpperBodyYawHeadBone);
+		if (HeadMesh != INDEX_NONE)
+		{
+			// The neck's parent has turned by Turn, so its component rotation now includes it; undo that for the neck only
+			ComputeComponentSpace(Pose, Space);
+			TurnBone(Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(HeadMesh)), Turn.Inverse());
+		}
+		Pose.NormalizeRotations();
+	}
+
 	// Hand IK onto the weapon. The weapon is placed from the anchor bone (the head) on the game thread with the same
 	// formula, after this pose is final, so the hands land on its grips.
 	if (Snapshot.HandIKWeight > 0.0f)
@@ -240,6 +274,33 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 			ComputeComponentSpace(Pose, Space);
 			const FVector GripPoint = Space[Anchor.GetInt()].GetLocation() + Snapshot.AimRotation.RotateVector(Snapshot.AnchorOffset);
 			const float Weight = FMath::Clamp(Snapshot.HandIKWeight, 0.0f, 1.0f);
+
+			// Shoulders: turn the clavicle so the upper arm's root moves by the offset (aim space). With the hand held on
+			// the gun, a shoulder brought closer bends the elbow more.
+			auto MoveShoulder = [&](const FName (&ArmBones)[3], const FVector& Offset)
+			{
+				const FCompactPoseBoneIndex Upper = Find(ArmBones[0]);
+				const FCompactPoseBoneIndex Clavicle = Upper.IsValid() ? Bones.GetParentBoneIndex(Upper) : FCompactPoseBoneIndex(INDEX_NONE);
+				const FCompactPoseBoneIndex ClavicleParent = Clavicle.IsValid() ? Bones.GetParentBoneIndex(Clavicle) : FCompactPoseBoneIndex(INDEX_NONE);
+				if (Offset.IsNearlyZero() || !ClavicleParent.IsValid())
+				{
+					return false;
+				}
+				const FVector Root = Space[Clavicle.GetInt()].GetLocation();
+				const FVector From = Space[Upper.GetInt()].GetLocation() - Root;
+				const FVector To = From + Snapshot.AimRotation.RotateVector(Offset) * Weight;
+				const FQuat Turn = FQuat::FindBetweenVectors(From, To);
+				FTransform ClavicleSpace = Space[Clavicle.GetInt()];
+				ClavicleSpace.SetRotation((Turn * ClavicleSpace.GetRotation()).GetNormalized());
+				Pose[Clavicle] = ClavicleSpace.GetRelativeTransform(Space[ClavicleParent.GetInt()]);
+				return true;
+			};
+			const bool bRightShoulder = MoveShoulder(Snapshot.RightArmBones, Snapshot.RightShoulderOffset);
+			const bool bLeftShoulder = Snapshot.bLeftHand && MoveShoulder(Snapshot.LeftArmBones, Snapshot.LeftShoulderOffset);
+			if (bRightShoulder || bLeftShoulder)
+			{
+				ComputeComponentSpace(Pose, Space);
+			}
 
 			// Turns a hand rotation about the aim axes
 			auto TurnInAim = [&Snapshot = Snapshot](const FQuat& Turn, const FQuat& Rotation)
@@ -282,6 +343,33 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 				return EndTransform;
 			};
 
+			// Where the hand bone must go for its palm to match the weapon rig's hand (Shape), nudged by Offset / Turn.
+			// The palm frame relative to the hand bone comes from this skeleton's own knuckles, so bone axes don't matter.
+			auto ShapeTarget = [&](FCompactPoseBoneIndex Hand, const TArray<FName> (&Fingers)[FTHHandShape::NumFingers],
+				const FTHHandShape& Shape, const FVector& Offset, const FQuat& Turn, FVector& OutLocation, FQuat& OutRotation)
+			{
+				const FCompactPoseBoneIndex Index = Fingers[1].Num() ? Find(Fingers[1][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+				const FCompactPoseBoneIndex Middle = Fingers[2].Num() ? Find(Fingers[2][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+				const FCompactPoseBoneIndex Pinky = Fingers[4].Num() ? Find(Fingers[4][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+				if (!Shape.bValid || !Index.IsValid() || !Middle.IsValid() || !Pinky.IsValid())
+				{
+					return false;
+				}
+				const FTransform& HandSpace = Space[Hand.GetInt()];
+				const FVector Wrist = HandSpace.GetLocation();
+				const FVector I = Space[Index.GetInt()].GetLocation();
+				const FVector M = Space[Middle.GetInt()].GetLocation();
+				const FVector P = Space[Pinky.GetInt()].GetLocation();
+				const FQuat FrameInHand = HandSpace.GetRotation().Inverse() * FTHHandShape::MakeFrame(Wrist, I, M, P);
+				const FVector PalmInHand = HandSpace.InverseTransformPosition(FTHHandShape::MakePalm(Wrist, I, M, P));
+
+				const FQuat Frame = TurnInAim(Turn, Snapshot.AimRotation * Shape.Frame);
+				OutRotation = (Frame * FrameInHand.Inverse()).GetNormalized();
+				const FVector Palm = GripPoint + Snapshot.AimRotation.RotateVector(Shape.Palm + Offset);
+				OutLocation = Palm - OutRotation.RotateVector(PalmInHand * HandSpace.GetScale3D());
+				return true;
+			};
+
 			const FCompactPoseBoneIndex RightHand = Find(Snapshot.RightArmBones[2]);
 			const FCompactPoseBoneIndex LeftHand = Find(Snapshot.LeftArmBones[2]);
 			if (RightHand.IsValid())
@@ -289,24 +377,37 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 				// The left hand's place relative to the right in the animation, before either moves
 				const FTransform LeftFromRight = LeftHand.IsValid() ? Space[LeftHand.GetInt()].GetRelativeTransform(Space[RightHand.GetInt()]) : FTransform::Identity;
 
-				const FTransform NewRight = SolveArm(Snapshot.RightArmBones,
-					GripPoint + Snapshot.AimRotation.RotateVector(Snapshot.RightHandTarget),
-					TurnInAim(Snapshot.RightHandRotation, Space[RightHand.GetInt()].GetRotation()));
-
-				if (Snapshot.bLeftHand && LeftHand.IsValid())
+				// Both targets are worked out before either arm moves (the arms are separate chains)
+				FVector RightLocation;
+				FQuat RightRotation;
+				if (!ShapeTarget(RightHand, Snapshot.RightFingers, Snapshot.RightShape, Snapshot.RightHandTarget, Snapshot.RightHandRotation, RightLocation, RightRotation))
 				{
-					if (Snapshot.bLeftHandFollowsRight)
-					{
-						// Keep the animation's two-handed grip: the left hand rides the right, LeftHandTarget nudges it
-						const FTransform Left = LeftFromRight * NewRight;
-						SolveArm(Snapshot.LeftArmBones, Left.GetLocation() + Snapshot.AimRotation.RotateVector(Snapshot.LeftHandTarget),
-							TurnInAim(Snapshot.LeftHandRotation, Left.GetRotation()));
-					}
-					else
-					{
-						SolveArm(Snapshot.LeftArmBones, GripPoint + Snapshot.AimRotation.RotateVector(Snapshot.LeftHandTarget),
-							TurnInAim(Snapshot.LeftHandRotation, Space[LeftHand.GetInt()].GetRotation()));
-					}
+					RightLocation = GripPoint + Snapshot.AimRotation.RotateVector(Snapshot.RightHandTarget);
+					RightRotation = TurnInAim(Snapshot.RightHandRotation, Space[RightHand.GetInt()].GetRotation());
+				}
+				FVector LeftLocation = FVector::ZeroVector;
+				FQuat LeftRotation = FQuat::Identity;
+				const bool bLeft = Snapshot.bLeftHand && LeftHand.IsValid();
+				const bool bLeftShape = bLeft && !Snapshot.bLeftHandFollowsRight
+					&& ShapeTarget(LeftHand, Snapshot.LeftFingers, Snapshot.LeftShape, Snapshot.LeftHandTarget, Snapshot.LeftHandRotation, LeftLocation, LeftRotation);
+
+				const FTransform NewRight = SolveArm(Snapshot.RightArmBones, RightLocation, RightRotation);
+
+				if (bLeftShape)
+				{
+					SolveArm(Snapshot.LeftArmBones, LeftLocation, LeftRotation);
+				}
+				else if (bLeft && Snapshot.bLeftHandFollowsRight)
+				{
+					// Keep the animation's two-handed grip: the left hand rides the right, LeftHandTarget nudges it
+					const FTransform Left = LeftFromRight * NewRight;
+					SolveArm(Snapshot.LeftArmBones, Left.GetLocation() + Snapshot.AimRotation.RotateVector(Snapshot.LeftHandTarget),
+						TurnInAim(Snapshot.LeftHandRotation, Left.GetRotation()));
+				}
+				else if (bLeft)
+				{
+					SolveArm(Snapshot.LeftArmBones, GripPoint + Snapshot.AimRotation.RotateVector(Snapshot.LeftHandTarget),
+						TurnInAim(Snapshot.LeftHandRotation, Space[LeftHand.GetInt()].GetRotation()));
 				}
 			}
 			Pose.NormalizeRotations();
@@ -328,6 +429,185 @@ bool FTHBodyAnimInstanceProxy::Evaluate(FPoseContext& Output)
 				{
 					IsFinger[Index.GetInt()] = true;
 					Pose[Index].BlendWith(HandPose.Pose[Index], Snapshot.HandPose.Weight);
+				}
+			}
+			Pose.NormalizeRotations();
+		}
+
+		// Fingers from the weapon rig's hands. Each joint is turned to point the way the rig's does, with its hinge kept
+		// along the knuckle line (fingers bend about it), so no joint twists and the next one bends the right way. The
+		// thumb hinges differently, so it only gets the least turn that points it.
+		const bool bRightFingers = Snapshot.RightShape.bValid;
+		const bool bLeftFingers = Snapshot.LeftShape.bValid && Snapshot.bLeftHand && !Snapshot.bLeftHandFollowsRight;
+		if (bRightFingers || bLeftFingers)
+		{
+			TArray<FTransform> Space;
+			ComputeComponentSpace(Pose, Space);
+			const float Weight = FMath::Clamp(Snapshot.HandIKWeight, 0.0f, 1.0f);
+			auto FindBone = [&Bones](FName Name)
+			{
+				const int32 MeshIndex = Name.IsNone() ? INDEX_NONE : Bones.GetPoseBoneIndexForBoneName(Name);
+				return MeshIndex != INDEX_NONE ? Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex)) : FCompactPoseBoneIndex(INDEX_NONE);
+			};
+			auto Curl = [&](const TArray<FName> (&Fingers)[FTHHandShape::NumFingers], const FTHHandShape& Shape)
+			{
+				// Knuckle line of this hand now, and of the rig's hand as placed
+				const FCompactPoseBoneIndex IndexKnuckle = Fingers[1].Num() ? FindBone(Fingers[1][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+				const FCompactPoseBoneIndex PinkyKnuckle = Fingers[4].Num() ? FindBone(Fingers[4][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+				if (!IndexKnuckle.IsValid() || !PinkyKnuckle.IsValid())
+				{
+					return;
+				}
+				const FVector HingeNow = (Space[IndexKnuckle.GetInt()].GetLocation() - Space[PinkyKnuckle.GetInt()].GetLocation()).GetSafeNormal();
+				const FVector HingeWanted = Snapshot.AimRotation.RotateVector(Shape.Frame.GetAxisY());
+
+				for (int32 Finger = 0; Finger < FTHHandShape::NumFingers; ++Finger)
+				{
+					const TArray<FName>& Chain = Fingers[Finger];
+					// Every joint with a rig direction, the last one included (it points along the axis its parent pointed to it)
+					const int32 Count = FMath::Min(Chain.Num(), Shape.NumDirections[Finger]);
+					FVector TipAxis = FVector::ZeroVector; // the last joint's length axis, in its parent's local space
+					for (int32 Joint = 0; Joint < Count; ++Joint)
+					{
+						const FCompactPoseBoneIndex Bone = FindBone(Chain[Joint]);
+						const FCompactPoseBoneIndex Parent = Bone.IsValid() ? Bones.GetParentBoneIndex(Bone) : FCompactPoseBoneIndex(INDEX_NONE);
+						if (!Bone.IsValid() || !Parent.IsValid())
+						{
+							break;
+						}
+						const FCompactPoseBoneIndex Child = Joint + 1 < Chain.Num() ? FindBone(Chain[Joint + 1]) : FCompactPoseBoneIndex(INDEX_NONE);
+						const bool bHasChild = Child.IsValid() && Bones.GetParentBoneIndex(Child) == Bone;
+						FTransform& BoneSpace = Space[Bone.GetInt()];
+
+						FVector Current;
+						if (bHasChild)
+						{
+							Current = (Space[Child.GetInt()].GetLocation() - BoneSpace.GetLocation()).GetSafeNormal();
+							TipAxis = BoneSpace.GetRotation().UnrotateVector(Current);
+						}
+						else
+						{
+							// Fingertip bone: assume it runs along the same local axis as the bone before it
+							Current = BoneSpace.GetRotation().RotateVector(TipAxis).GetSafeNormal();
+						}
+						const FVector Wanted = Snapshot.AimRotation.RotateVector(Shape.FingerDirections[Finger][Joint]);
+						if (Current.IsNearlyZero() || Wanted.IsNearlyZero())
+						{
+							break;
+						}
+
+						FQuat Turn;
+						const bool bHinged = Finger != 0 && FMath::Abs(Current | HingeNow) < 0.9f && FMath::Abs(Wanted | HingeWanted) < 0.9f;
+						if (bHinged)
+						{
+							Turn = FRotationMatrix::MakeFromXY(Wanted, HingeWanted).ToQuat() * FRotationMatrix::MakeFromXY(Current, HingeNow).ToQuat().Inverse();
+						}
+						else
+						{
+							Turn = FQuat::FindBetweenNormals(Current, Wanted);
+						}
+						Turn = FQuat::Slerp(FQuat::Identity, Turn, Weight);
+
+						BoneSpace.SetRotation((Turn * BoneSpace.GetRotation()).GetNormalized());
+						Pose[Bone] = BoneSpace.GetRelativeTransform(Space[Parent.GetInt()]);
+						// The next joint along hangs off this one
+						if (bHasChild)
+						{
+							Space[Child.GetInt()] = Pose[Child] * BoneSpace;
+						}
+						else
+						{
+							break;
+						}
+					}
+				}
+			};
+			if (bRightFingers)
+			{
+				Curl(Snapshot.RightFingers, Snapshot.RightShape);
+			}
+			if (bLeftFingers)
+			{
+				Curl(Snapshot.LeftFingers, Snapshot.LeftShape);
+			}
+			Pose.NormalizeRotations();
+		}
+	}
+
+	// Lowered carry: the weapon rides the animation's right hand; pull the left hand onto its left grip (the rig's left
+	// palm, as when aiming) so it doesn't float off the gun
+	if (Snapshot.LoweredLeftWeight > 0.0f)
+	{
+		auto Find = [&Bones](FName Name)
+		{
+			const int32 MeshIndex = Name.IsNone() ? INDEX_NONE : Bones.GetPoseBoneIndexForBoneName(Name);
+			return MeshIndex != INDEX_NONE ? Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshIndex)) : FCompactPoseBoneIndex(INDEX_NONE);
+		};
+		const FCompactPoseBoneIndex RightHand = Find(Snapshot.RightArmBones[2]);
+		const FCompactPoseBoneIndex Upper = Find(Snapshot.LeftArmBones[0]);
+		const FCompactPoseBoneIndex Lower = Find(Snapshot.LeftArmBones[1]);
+		const FCompactPoseBoneIndex Hand = Find(Snapshot.LeftArmBones[2]);
+		const TArray<FName> (&Fingers)[FTHHandShape::NumFingers] = Snapshot.LeftFingers;
+		const FCompactPoseBoneIndex Index = Fingers[1].Num() ? Find(Fingers[1][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+		const FCompactPoseBoneIndex Middle = Fingers[2].Num() ? Find(Fingers[2][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+		const FCompactPoseBoneIndex Pinky = Fingers[4].Num() ? Find(Fingers[4][0]) : FCompactPoseBoneIndex(INDEX_NONE);
+		const FCompactPoseBoneIndex UpperParent = Upper.IsValid() ? Bones.GetParentBoneIndex(Upper) : FCompactPoseBoneIndex(INDEX_NONE);
+		const FCompactPoseBoneIndex Chest = UpperParent.IsValid() ? Bones.GetParentBoneIndex(UpperParent) : FCompactPoseBoneIndex(INDEX_NONE);
+		if (RightHand.IsValid() && Lower.IsValid() && Hand.IsValid() && Chest.IsValid() && Index.IsValid() && Middle.IsValid() && Pinky.IsValid())
+		{
+			TArray<FTransform> Space;
+			ComputeComponentSpace(Pose, Space);
+			const float Weight = FMath::Clamp(Snapshot.LoweredLeftWeight, 0.0f, 1.0f);
+
+			// Where the weapon is (as the game thread will place it) and its aim axes
+			const FTransform Gun = Snapshot.GunFromRightHand * Space[RightHand.GetInt()];
+			const FQuat GunAim = Gun.GetRotation() * Snapshot.HoldRotation.Inverse();
+
+			// The left hand's palm frame relative to its bone, from this skeleton's knuckles
+			const FTransform& HandSpace = Space[Hand.GetInt()];
+			const FVector Wrist = HandSpace.GetLocation();
+			const FVector I = Space[Index.GetInt()].GetLocation();
+			const FVector M = Space[Middle.GetInt()].GetLocation();
+			const FVector P = Space[Pinky.GetInt()].GetLocation();
+			const FQuat FrameInHand = HandSpace.GetRotation().Inverse() * FTHHandShape::MakeFrame(Wrist, I, M, P);
+			const FVector PalmInHand = HandSpace.InverseTransformPosition(FTHHandShape::MakePalm(Wrist, I, M, P));
+
+			const FQuat Turn = (GunAim * Snapshot.LoweredLeftTurn * GunAim.Inverse()).GetNormalized();
+			const FQuat Frame = (Turn * Gun.GetRotation() * Snapshot.LeftFrameInGun).GetNormalized();
+			const FVector Palm = Gun.TransformPosition(Snapshot.LeftPalmInGun) + GunAim.RotateVector(Snapshot.LoweredLeftOffset);
+			const FQuat TargetRotation = (Frame * FrameInHand.Inverse()).GetNormalized();
+			const FVector Target = Palm - TargetRotation.RotateVector(PalmInHand * HandSpace.GetScale3D());
+
+			FTransform RootTransform = Space[Upper.GetInt()];
+			FTransform JointTransform = Space[Lower.GetInt()];
+			FTransform EndTransform = HandSpace;
+			const FQuat AnimRotation = EndTransform.GetRotation();
+			const FVector Effector = FMath::Lerp(EndTransform.GetLocation(), Target, Weight);
+			const FVector Shoulder = RootTransform.GetLocation();
+			const FVector Outward = (Shoulder - Space[Chest.GetInt()].GetLocation()).GetSafeNormal2D();
+			const FVector Pole = (Shoulder + Effector) * 0.5f + (FVector::DownVector * 0.8f + Outward * 0.5f).GetSafeNormal() * 50.0f;
+			AnimationCore::SolveTwoBoneIK(RootTransform, JointTransform, EndTransform, Pole, Effector, false, 1.0, 1.0);
+			EndTransform.SetRotation(FQuat::Slerp(AnimRotation, TargetRotation, Weight).GetNormalized());
+
+			Pose[Upper] = RootTransform.GetRelativeTransform(Space[UpperParent.GetInt()]);
+			Pose[Lower] = JointTransform.GetRelativeTransform(RootTransform);
+			Pose[Hand] = EndTransform.GetRelativeTransform(JointTransform);
+
+			// Left fingers from the hand pose, as when aiming
+			if (Snapshot.HandPose.Anim && Snapshot.bHandPoseLeft)
+			{
+				FPoseContext HandPose(Output);
+				SampleSequence(Snapshot.HandPose, HandPose);
+				TArray<bool> IsFinger;
+				IsFinger.Init(false, Pose.GetNumBones());
+				for (const FCompactPoseBoneIndex Bone : Pose.ForEachBoneIndex())
+				{
+					const FCompactPoseBoneIndex Parent = Bones.GetParentBoneIndex(Bone);
+					if (Parent.IsValid() && (Parent == Hand || IsFinger[Parent.GetInt()]))
+					{
+						IsFinger[Bone.GetInt()] = true;
+						Pose[Bone].BlendWith(HandPose.Pose[Bone], Weight);
+					}
 				}
 			}
 			Pose.NormalizeRotations();
@@ -396,10 +676,72 @@ float UTHBodyAnimInstance::GetAnimSpeed(const UAnimSequence* Anim)
 	return Speed;
 }
 
+void UTHBodyAnimInstance::RaiseWeapon()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastReadyTime = World->GetTimeSeconds();
+	}
+}
+
 void UTHBodyAnimInstance::SetWeaponGrip(const FTHWeaponGrip& Grip)
 {
 	bHasWeaponGrip = true;
 	WeaponGrip = Grip;
+}
+
+void FTHHandShape::FindFingers(const FReferenceSkeleton& Skeleton, FName Hand, TArray<FName> (&OutFingers)[NumFingers])
+{
+	static const TCHAR* Keys[NumFingers] = { TEXT("thumb"), TEXT("index"), TEXT("middle"), TEXT("ring"), TEXT("pinky") };
+	for (TArray<FName>& Chain : OutFingers)
+	{
+		Chain.Reset();
+	}
+	const int32 HandIndex = Skeleton.FindBoneIndex(Hand);
+	if (HandIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	// Reference skeletons list parents before children, so each chain comes out base first
+	for (int32 Bone = HandIndex + 1; Bone < Skeleton.GetNum(); ++Bone)
+	{
+		int32 Parent = Skeleton.GetParentIndex(Bone);
+		while (Parent != INDEX_NONE && Parent != HandIndex)
+		{
+			Parent = Skeleton.GetParentIndex(Parent);
+		}
+		if (Parent != HandIndex)
+		{
+			continue;
+		}
+		const FString Name = Skeleton.GetBoneName(Bone).ToString();
+		if (Name.Contains(TEXT("metacarpal")))
+		{
+			continue;
+		}
+		for (int32 Finger = 0; Finger < NumFingers; ++Finger)
+		{
+			if (Name.Contains(Keys[Finger]) && OutFingers[Finger].Num() < MaxJoints + 1)
+			{
+				OutFingers[Finger].Add(Skeleton.GetBoneName(Bone));
+				break;
+			}
+		}
+	}
+}
+
+FQuat FTHHandShape::MakeFrame(const FVector& Wrist, const FVector& Index, const FVector& Middle, const FVector& Pinky)
+{
+	const FVector Forward = (Middle - Wrist).GetSafeNormal();
+	const FVector Across = (Index - Pinky).GetSafeNormal();
+	return FRotationMatrix::MakeFromXY(Forward, Across).ToQuat();
+}
+
+FVector FTHHandShape::MakePalm(const FVector& Wrist, const FVector& Index, const FVector& Middle, const FVector& Pinky)
+{
+	// The knuckles: hands of different sizes then wrap the grip from the same line (the first-person hands are larger)
+	return (Index + Middle + Pinky) / 3.0f;
 }
 
 FQuat FTHWeaponGrip::GetAimInComponentSpace(const APawn* Pawn, const USceneComponent* Body, const FRotator& RotationOffset)
@@ -485,16 +827,50 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
-	// Each slot comes from the held weapon's set if it has one, else from the unarmed set.
-	// Weight that came from the held set itself needs no upper-body layer: those animations already hold the weapon.
-	auto Pick = [Held, Unarmed](TObjectPtr<UAnimSequence> UTHBodyAnimSet::* Slot, bool& bOutFromHeld) -> const UAnimSequence*
+	// Weapon up (the held set) or lowered (its LoweredSet): up while aiming and for ReadyHoldTime after the last shot
+	const UTHBodyAnimSet* Lowered = Held && Held->LoweredSet && Held->LoweredSet != Held ? Held->LoweredSet.Get() : nullptr;
+	if (Lowered)
 	{
-		bOutFromHeld = Held && Held != Unarmed && (Held->*Slot) != nullptr;
+		const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+		if (Weapons->IsAiming())
+		{
+			LastReadyTime = Now;
+		}
+		const float ReadyTarget = Now - LastReadyTime < Held->ReadyHoldTime ? 1.0f : 0.0f;
+		const float BlendTime = ReadyTarget > ReadyAlpha ? Held->RaiseTime : Held->LowerTime;
+		ReadyAlpha = FMath::FInterpConstantTo(ReadyAlpha, ReadyTarget, DeltaSeconds, 1.0f / FMath::Max(BlendTime, 0.01f));
+	}
+	else
+	{
+		ReadyAlpha = 1.0f;
+	}
+
+	// The weapon sets blended by readiness: their slots are picked from each, weighted
+	struct FSetShare { const UTHBodyAnimSet* Set; float Weight; };
+	TArray<FSetShare, TInlineAllocator<2>> Shares;
+	if (Lowered && ReadyAlpha < 0.999f)
+	{
+		Shares.Add({ Lowered, 1.0f - ReadyAlpha });
+	}
+	if (!Lowered || ReadyAlpha > 0.001f)
+	{
+		Shares.Add({ Held, Lowered ? ReadyAlpha : 1.0f });
+	}
+
+	// Each slot comes from the weapon's set if it has one, else from the unarmed set.
+	// Weight that came from a weapon set itself needs no upper-body layer: those animations already hold the weapon.
+	auto PickFrom = [Unarmed](const UTHBodyAnimSet* Set, TObjectPtr<UAnimSequence> UTHBodyAnimSet::* Slot, bool& bOutFromHeld) -> const UAnimSequence*
+	{
+		bOutFromHeld = Set && Set != Unarmed && (Set->*Slot) != nullptr;
 		if (bOutFromHeld)
 		{
-			return Held->*Slot;
+			return Set->*Slot;
 		}
 		return Unarmed ? (Unarmed->*Slot).Get() : nullptr;
+	};
+	auto Pick = [&PickFrom, Held](TObjectPtr<UAnimSequence> UTHBodyAnimSet::* Slot, bool& bOutFromHeld)
+	{
+		return PickFrom(Held, Slot, bOutFromHeld);
 	};
 
 	// Movement state, all replicated for other players' characters
@@ -529,24 +905,27 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		}
 	};
 
-	// Idle
+	// Idle, from each weapon set by its share
 	const float Ground = 1.0f - FallAlpha;
-	bool bIdleFromHeld = false;
-	bool bCrouchIdleFromHeld = false;
-	const UAnimSequence* Idle = Pick(&UTHBodyAnimSet::Idle, bIdleFromHeld);
-	const UAnimSequence* CrouchIdle = Pick(&UTHBodyAnimSet::CrouchIdle, bCrouchIdleFromHeld);
-	if (!CrouchIdle)
+	for (const FSetShare& Share : Shares)
 	{
-		CrouchIdle = Idle;
-		bCrouchIdleFromHeld = bIdleFromHeld;
-	}
-	if (Idle)
-	{
-		AddLeg(Idle, WrapTime(IdleTime, Idle), Ground * (1.0f - MoveAlpha) * (1.0f - CrouchAlpha), bIdleFromHeld);
-	}
-	if (CrouchIdle)
-	{
-		AddLeg(CrouchIdle, WrapTime(IdleTime, CrouchIdle), Ground * (1.0f - MoveAlpha) * CrouchAlpha, bCrouchIdleFromHeld);
+		bool bIdleFromHeld = false;
+		bool bCrouchIdleFromHeld = false;
+		const UAnimSequence* Idle = PickFrom(Share.Set, &UTHBodyAnimSet::Idle, bIdleFromHeld);
+		const UAnimSequence* CrouchIdle = PickFrom(Share.Set, &UTHBodyAnimSet::CrouchIdle, bCrouchIdleFromHeld);
+		if (!CrouchIdle)
+		{
+			CrouchIdle = Idle;
+			bCrouchIdleFromHeld = bIdleFromHeld;
+		}
+		if (Idle)
+		{
+			AddLeg(Idle, WrapTime(IdleTime, Idle), Share.Weight * Ground * (1.0f - MoveAlpha) * (1.0f - CrouchAlpha), bIdleFromHeld);
+		}
+		if (CrouchIdle)
+		{
+			AddLeg(CrouchIdle, WrapTime(IdleTime, CrouchIdle), Share.Weight * Ground * (1.0f - MoveAlpha) * CrouchAlpha, bCrouchIdleFromHeld);
+		}
 	}
 
 	// Directional walks, standing and crouched
@@ -557,38 +936,41 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	TObjectPtr<UAnimSequence> UTHBodyAnimSet::* CrouchSlots[4] = { &UTHBodyAnimSet::CrouchForward, &UTHBodyAnimSet::CrouchBackward, &UTHBodyAnimSet::CrouchLeft, &UTHBodyAnimSet::CrouchRight };
 
 	// A set's speed override applies to the animations taken from it
-	auto SpeedOf = [this, Held, Unarmed](const UAnimSequence* Anim, bool bFromHeld, bool bCrouch)
+	auto SpeedOf = [this, Unarmed](const UTHBodyAnimSet* Set, const UAnimSequence* Anim, bool bFromHeld, bool bCrouch)
 	{
-		const UTHBodyAnimSet* Source = bFromHeld ? Held : Unarmed;
+		const UTHBodyAnimSet* Source = bFromHeld ? Set : Unarmed;
 		const float Override = Source ? (bCrouch ? Source->CrouchAnimSpeed : Source->WalkAnimSpeed) : 0.0f;
 		return Override > 0.0f ? Override : GetAnimSpeed(Anim);
 	};
 
 	TArray<FDirectional, TInlineAllocator<8>> Walks;
-	for (int32 Index = 0; Index < 4; ++Index)
+	for (const FSetShare& Share : Shares)
 	{
-		const float Moving = Ground * MoveAlpha * DirectionWeights[Index];
-		if (Moving <= 0.001f)
+		for (int32 Index = 0; Index < 4; ++Index)
 		{
-			continue;
-		}
+			const float Moving = Share.Weight * Ground * MoveAlpha * DirectionWeights[Index];
+			if (Moving <= 0.001f)
+			{
+				continue;
+			}
 
-		bool bStandFromHeld = false;
-		bool bCrouchFromHeld = false;
-		const UAnimSequence* Stand = Pick(StandSlots[Index], bStandFromHeld);
-		const UAnimSequence* Crouch = Pick(CrouchSlots[Index], bCrouchFromHeld);
-		if (!Crouch)
-		{
-			Crouch = Stand;
-			bCrouchFromHeld = bStandFromHeld;
-		}
-		if (Stand)
-		{
-			Walks.Add({ Stand, Moving * (1.0f - CrouchAlpha), bStandFromHeld, SpeedOf(Stand, bStandFromHeld, false) });
-		}
-		if (Crouch)
-		{
-			Walks.Add({ Crouch, Moving * CrouchAlpha, bCrouchFromHeld, SpeedOf(Crouch, bCrouchFromHeld, Crouch != Stand) });
+			bool bStandFromHeld = false;
+			bool bCrouchFromHeld = false;
+			const UAnimSequence* Stand = PickFrom(Share.Set, StandSlots[Index], bStandFromHeld);
+			const UAnimSequence* Crouch = PickFrom(Share.Set, CrouchSlots[Index], bCrouchFromHeld);
+			if (!Crouch)
+			{
+				Crouch = Stand;
+				bCrouchFromHeld = bStandFromHeld;
+			}
+			if (Stand)
+			{
+				Walks.Add({ Stand, Moving * (1.0f - CrouchAlpha), bStandFromHeld, SpeedOf(Share.Set, Stand, bStandFromHeld, false) });
+			}
+			if (Crouch)
+			{
+				Walks.Add({ Crouch, Moving * CrouchAlpha, bCrouchFromHeld, SpeedOf(Share.Set, Crouch, bCrouchFromHeld, Crouch != Stand) });
+			}
 		}
 	}
 
@@ -626,28 +1008,47 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	// Upper body: the held pose covers whatever share of the legs came from another set
 	NewSnapshot.UpperBodyRootBone = PoseSet->UpperBodyRootBone;
-	if (PoseSet->UpperBodyPose && TotalWeight > 0.0f)
+	NewSnapshot.UpperBodyYaw = FMath::Lerp(Lowered ? Lowered->UpperBodyYaw : PoseSet->UpperBodyYaw, PoseSet->UpperBodyYaw, ReadyAlpha)
+		+ CVarUpperBodyYawTune.GetValueOnGameThread();
+	NewSnapshot.UpperBodyYawHeadBone = PoseSet->UpperBodyYawHeadBone;
+	// While lowered, the lowered set's own pose layers over borrowed legs (e.g. the unarmed crouch), if it has one
+	const UTHBodyAnimSet* LayerSet = Lowered && ReadyAlpha < 0.5f && Lowered->UpperBodyPose ? Lowered : PoseSet;
+	if (LayerSet->UpperBodyPose && TotalWeight > 0.0f)
 	{
 		const float LayerWeight = 1.0f - HeldWeight / TotalWeight;
 		if (LayerWeight > 0.001f)
 		{
-			NewSnapshot.UpperBody = { PoseSet->UpperBodyPose, WrapTime(IdleTime, PoseSet->UpperBodyPose), LayerWeight, true };
+			NewSnapshot.UpperBody = { LayerSet->UpperBodyPose, WrapTime(IdleTime, LayerSet->UpperBodyPose), LayerWeight, true };
 		}
 	}
 	if (PoseSet->AimOffset)
 	{
+		// Aiming up and down belongs to the raised weapon; a lowered carry doesn't follow the view
 		const float Pitch = FMath::Clamp(FRotator::NormalizeAxis(Character->GetBaseAimRotation().Pitch), -90.0f, 90.0f);
 		NewSnapshot.AimOffset = PoseSet->AimOffset;
 		NewSnapshot.AimOffsetInput = Pitch / 90.0f * PoseSet->AimOffsetPitchAtLookUp;
+		NewSnapshot.AimOffsetWeight = ReadyAlpha;
 	}
 
 	const float FullPoseActionWeight = UpdateActions(DeltaSeconds, NewSnapshot);
 
 	// Hands onto the weapon, eased in and out so switching weapons or finishing a reload doesn't snap
-	const float IKTarget = bHasWeaponGrip && Held ? Held->HandIKWeight * (1.0f - FullPoseActionWeight) : 0.0f;
+	// Lowered, the weapon rides the right hand of the lowered animation instead
+	const float IKTarget = bHasWeaponGrip && Held ? Held->HandIKWeight * (1.0f - FullPoseActionWeight) * ReadyAlpha : 0.0f;
 	HandIKAlpha = FMath::FInterpConstantTo(HandIKAlpha, IKTarget, DeltaSeconds, 8.0f);
-	if (HandIKAlpha > 0.001f && bHasWeaponGrip)
+	// Lowered, the left hand still goes onto the weapon (which rides the right hand)
+	const float LoweredLeftTarget = bHasWeaponGrip && Held && Lowered && Lowered->bLeftHandOnWeapon && WeaponGrip.bHasGunFromRightHand && WeaponGrip.bLeftHand
+		&& !WeaponGrip.bLeftHandFollowsRight ? (1.0f - ReadyAlpha) * (1.0f - FullPoseActionWeight) : 0.0f;
+	LoweredLeftAlpha = FMath::FInterpConstantTo(LoweredLeftAlpha, LoweredLeftTarget, DeltaSeconds, 8.0f);
+	if ((HandIKAlpha > 0.001f || LoweredLeftAlpha > 0.001f) && bHasWeaponGrip)
 	{
+		NewSnapshot.LoweredLeftWeight = LoweredLeftAlpha;
+		NewSnapshot.GunFromRightHand = WeaponGrip.GunFromRightHand;
+		NewSnapshot.LeftPalmInGun = WeaponGrip.LeftPalmInGun;
+		NewSnapshot.LeftFrameInGun = WeaponGrip.LeftFrameInGun;
+		NewSnapshot.HoldRotation = WeaponGrip.HoldRotation;
+		NewSnapshot.LoweredLeftOffset = WeaponGrip.LeftHandTarget;
+		NewSnapshot.LoweredLeftTurn = WeaponGrip.LeftHandRotation.Quaternion();
 		NewSnapshot.HandIKWeight = HandIKAlpha;
 		NewSnapshot.AimRotation = FTHWeaponGrip::GetAimInComponentSpace(Character, GetSkelMeshComponent(), WeaponGrip.RotationOffset);
 		NewSnapshot.AnchorBone = WeaponGrip.AnchorBone;
@@ -664,6 +1065,50 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		NewSnapshot.LeftArmBones[0] = Held->LeftUpperArmBone;
 		NewSnapshot.LeftArmBones[1] = Held->LeftLowerArmBone;
 		NewSnapshot.LeftArmBones[2] = Held->LeftHandBone;
+
+		// The body's finger bones, for matching the weapon rig's hands
+		const USkeletalMesh* BodyMesh = GetSkelMeshComponent()->GetSkeletalMeshAsset();
+		if (BodyMesh && (FingersMesh.Get() != BodyMesh || FingersHands[0] != Held->RightHandBone || FingersHands[1] != Held->LeftHandBone))
+		{
+			FingersMesh = BodyMesh;
+			FingersHands[0] = Held->RightHandBone;
+			FingersHands[1] = Held->LeftHandBone;
+			FTHHandShape::FindFingers(BodyMesh->GetRefSkeleton(), FingersHands[0], Fingers[0]);
+			FTHHandShape::FindFingers(BodyMesh->GetRefSkeleton(), FingersHands[1], Fingers[1]);
+		}
+		NewSnapshot.RightShoulderOffset = WeaponGrip.RightShoulderOffset;
+		NewSnapshot.LeftShoulderOffset = WeaponGrip.LeftShoulderOffset;
+		NewSnapshot.RightShape = WeaponGrip.RightShape;
+		NewSnapshot.LeftShape = WeaponGrip.LeftShape;
+		if (CVarDebugHandFingers.GetValueOnGameThread() != 0)
+		{
+			for (int32 Finger = 0; Finger < FTHHandShape::NumFingers; ++Finger)
+			{
+				NewSnapshot.RightFingers[Finger] = Fingers[0][Finger];
+				NewSnapshot.LeftFingers[Finger] = Fingers[1][Finger];
+			}
+		}
+		else
+		{
+			// Only the knuckles are needed to place the hands
+			for (int32 Finger = 0; Finger < FTHHandShape::NumFingers; ++Finger)
+			{
+				NewSnapshot.RightFingers[Finger] = Fingers[0][Finger];
+				NewSnapshot.LeftFingers[Finger] = Fingers[1][Finger];
+				NewSnapshot.RightShape.NumDirections[Finger] = 0;
+				NewSnapshot.LeftShape.NumDirections[Finger] = 0;
+			}
+		}
+
+		// A hand covered by an authored Hand Pose keeps those fingers instead of the copied ones
+		if (Held->HandPose)
+		{
+			for (int32 Finger = 0; Finger < FTHHandShape::NumFingers; ++Finger)
+			{
+				NewSnapshot.RightShape.NumDirections[Finger] = Held->bHandPoseRight ? 0 : NewSnapshot.RightShape.NumDirections[Finger];
+				NewSnapshot.LeftShape.NumDirections[Finger] = Held->bHandPoseLeft ? 0 : NewSnapshot.LeftShape.NumDirections[Finger];
+			}
+		}
 		if (Held->HandPose)
 		{
 			NewSnapshot.HandPose = { Held->HandPose, FMath::Clamp(Held->HandPoseTime, 0.0f, Held->HandPose->GetPlayLength()), HandIKAlpha, false };

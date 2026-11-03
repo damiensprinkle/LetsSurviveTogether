@@ -29,6 +29,7 @@ private:
 	TWeakObjectPtr<class ACameraActor> ThirdPersonCamera;
 	float ThirdPersonYaw = 0.0f;
 	bool bAutoReloaded = false;
+	bool bAutoSwitched = false;
 	float PreviewYaw = 0.0f;
 	bool bAutoFiring = false;
 

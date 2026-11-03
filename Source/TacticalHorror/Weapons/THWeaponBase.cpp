@@ -39,7 +39,8 @@ static TAutoConsoleVariable<int32> CVarDebugThirdPerson(
 static TAutoConsoleVariable<FString> CVarThirdPersonTune(
 	TEXT("th.ThirdPersonTune"), TEXT(""),
 	TEXT("Live tuning of the held weapon's third-person hold, added to its data asset values (copy the result into the asset): ")
-	TEXT("\"anchorX anchorY anchorZ  rightX rightY rightZ  rightPitch rightYaw rightRoll  leftX leftY leftZ  leftPitch leftYaw leftRoll\". Missing values = 0."));
+	TEXT("\"anchorX anchorY anchorZ  rightX rightY rightZ  rightPitch rightYaw rightRoll  leftX leftY leftZ  leftPitch leftYaw leftRoll  ")
+	TEXT("rightShoulderX rightShoulderY rightShoulderZ  leftShoulderX leftShoulderY leftShoulderZ\". Missing values = 0."));
 #include "TacticalHorror.h"
 
 namespace
@@ -52,18 +53,20 @@ namespace
 		FRotator RightRotation;
 		FVector LeftOffset;
 		FRotator LeftRotation;
+		FVector RightShoulder;
+		FVector LeftShoulder;
 	};
 
 	FThirdPersonHold GetThirdPersonHold(const UTHWeaponData& Data)
 	{
 		FThirdPersonHold Hold{ Data.ThirdPersonAnchorOffset, Data.ThirdPersonRightHandOffset, Data.ThirdPersonRightHandRotation,
-			Data.ThirdPersonLeftHandOffset, Data.ThirdPersonLeftHandRotation };
+			Data.ThirdPersonLeftHandOffset, Data.ThirdPersonLeftHandRotation, Data.ThirdPersonRightShoulderOffset, Data.ThirdPersonLeftShoulderOffset };
 		TArray<FString> Parts;
 		CVarThirdPersonTune.GetValueOnGameThread().ParseIntoArrayWS(Parts);
 		if (!Parts.IsEmpty())
 		{
-			float V[15] = {};
-			for (int32 Index = 0; Index < FMath::Min(Parts.Num(), 15); ++Index)
+			float V[21] = {};
+			for (int32 Index = 0; Index < FMath::Min(Parts.Num(), 21); ++Index)
 			{
 				V[Index] = FCString::Atof(*Parts[Index]);
 			}
@@ -72,6 +75,8 @@ namespace
 			Hold.RightRotation += FRotator(V[6], V[7], V[8]);
 			Hold.LeftOffset += FVector(V[9], V[10], V[11]);
 			Hold.LeftRotation += FRotator(V[12], V[13], V[14]);
+			Hold.RightShoulder += FVector(V[15], V[16], V[17]);
+			Hold.LeftShoulder += FVector(V[18], V[19], V[20]);
 		}
 		return Hold;
 	}
@@ -198,6 +203,7 @@ void ATHWeaponBase::OnEquipped()
 	SetActorTickEnabled(true);
 	UpdateFirstPersonRendering();
 
+	ThirdPersonRevealTime = 0.0;
 	AttachThirdPersonMesh();
 
 	if (WeaponData)
@@ -208,9 +214,24 @@ void ATHWeaponBase::OnEquipped()
 		{
 			// Never more than twice as fast as authored, so a short EquipDuration doesn't make it a twitch
 			const float Length = BodySet->Equip ? BodySet->Equip->GetPlayLength() : 0.0f;
-			PlayBodyAction(BodySet->Equip, FMath::Max(WeaponData->EquipDuration, Length * 0.5f), 0.05f, BodySet->ActionBlendTime);
+			const float Duration = FMath::Max(WeaponData->EquipDuration, Length * 0.5f);
+			PlayBodyAction(BodySet->Equip, Duration, 0.05f, BodySet->ActionBlendTime);
+			// The third-person weapon appears once the draw has brought the hand up
+			if (BodySet->Equip)
+			{
+				ThirdPersonRevealTime = GetWorld()->GetTimeSeconds() + Duration * BodySet->EquipRevealFraction;
+			}
+		}
+
+		// A freshly drawn weapon comes up ready (aiming pose), then lowers after the set's Ready Hold Time
+		const APawn* Pawn = GetOwningPawn();
+		const UTHWeaponComponent* Weapons = Pawn ? Pawn->FindComponentByClass<UTHWeaponComponent>() : nullptr;
+		if (UTHBodyAnimInstance* Body = Weapons ? Weapons->GetBodyAnimInstance() : nullptr)
+		{
+			Body->RaiseWeapon();
 		}
 	}
+	ThirdPersonMesh->SetHiddenInGame(ThirdPersonRevealTime > GetWorld()->GetTimeSeconds());
 
 	ReceiveEquipped();
 }
@@ -453,6 +474,9 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 		return;
 	}
 
+	// Hidden until the equip animation has brought the hand up (does nothing when unchanged)
+	ThirdPersonMesh->SetHiddenInGame(ThirdPersonRevealTime > GetWorld()->GetTimeSeconds());
+
 	// Barrel along the aim (as in first person, so effects line up), grip bone at the anchor offset from the head.
 	// The body's hand IK uses the same formula (FTHWeaponGrip), so the hands land on the grips.
 	const FQuat Aim = Body->GetComponentQuat() * FTHWeaponGrip::GetAimInComponentSpace(Pawn, Body, WeaponData->ThirdPersonRotationOffset);
@@ -474,8 +498,45 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 		ThirdPersonHandOffset = Held.GetRelativeTransform(HandTransform);
 		bHasThirdPersonHandOffset = true;
 	}
-	const FTransform OnHand = bHasThirdPersonHandOffset ? ThirdPersonHandOffset * HandTransform
+	FTransform OnHand = bHasThirdPersonHandOffset ? ThirdPersonHandOffset * HandTransform
 		: FTransform(Rotation, HandTransform.GetLocation() - Rotation.RotateVector(Grip * Scale), Scale);
+
+	// Better: put the rig's right palm (knuckles and their facing) exactly on the body's right palm, as the hand IK
+	// does when aiming. Works before the hands were ever on it (a character that starts lowered).
+	bool bPalmOnHand = false;
+	{
+		const USkeletalMesh* RigMesh = ThirdPersonMesh->GetSkeletalMeshAsset();
+		if (RigMesh && ThirdPersonRigFingersMesh.Get() != RigMesh)
+		{
+			ThirdPersonRigFingersMesh = RigMesh;
+			FTHHandShape::FindFingers(RigMesh->GetRefSkeleton(), WeaponData->ThirdPersonGripBone, ThirdPersonRigFingers[0]);
+			FTHHandShape::FindFingers(RigMesh->GetRefSkeleton(), WeaponData->ThirdPersonLeftHandBone, ThirdPersonRigFingers[1]);
+		}
+		const USkeletalMesh* BodyMesh = Body->GetSkeletalMeshAsset();
+		if (BodyMesh && ThirdPersonBodyFingersMesh.Get() != BodyMesh)
+		{
+			ThirdPersonBodyFingersMesh = BodyMesh;
+			FTHHandShape::FindFingers(BodyMesh->GetRefSkeleton(), WeaponData->ThirdPersonHandBone, ThirdPersonBodyFingers);
+		}
+		const TArray<FName> (&Rig)[5] = ThirdPersonRigFingers[0];
+		const TArray<FName> (&Own)[5] = ThirdPersonBodyFingers;
+		if (WeaponData->bThirdPersonMatchRigHands && Rig[1].Num() && Rig[2].Num() && Rig[4].Num() && Own[1].Num() && Own[2].Num() && Own[4].Num())
+		{
+			auto RigCS = [this](FName Bone) { return ThirdPersonMesh->GetBoneLocation(Bone, EBoneSpaces::ComponentSpace); };
+			const FVector RW = RigCS(WeaponData->ThirdPersonGripBone), RI = RigCS(Rig[1][0]), RM = RigCS(Rig[2][0]), RP = RigCS(Rig[4][0]);
+			const FQuat RigFrame = FTHHandShape::MakeFrame(RW, RI, RM, RP);
+			const FVector RigPalm = FTHHandShape::MakePalm(RW, RI, RM, RP);
+
+			auto BodyWS = [Body](FName Bone) { return Body->GetSocketLocation(Bone); };
+			const FVector BW = HandTransform.GetLocation(), BI = BodyWS(Own[1][0]), BM = BodyWS(Own[2][0]), BP = BodyWS(Own[4][0]);
+			const FQuat BodyFrame = FTHHandShape::MakeFrame(BW, BI, BM, BP);
+			const FVector BodyPalm = FTHHandShape::MakePalm(BW, BI, BM, BP);
+
+			const FQuat GunRotation = (BodyFrame * RigFrame.Inverse()).GetNormalized();
+			OnHand = FTransform(GunRotation, BodyPalm - GunRotation.RotateVector(RigPalm * Scale), Scale);
+			bPalmOnHand = true;
+		}
+	}
 	FTransform Placed = Held;
 	if (HandsOn <= 0.99f)
 	{
@@ -498,6 +559,59 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 		WeaponGrip.RightHandRotation = Hold.RightRotation;
 		WeaponGrip.LeftHandRotation = Hold.LeftRotation;
 		WeaponGrip.bLeftHandFollowsRight = WeaponData->bThirdPersonLeftHandFollowsRight;
+		WeaponGrip.RightShoulderOffset = Hold.RightShoulder;
+		WeaponGrip.LeftShoulderOffset = Hold.LeftShoulder;
+
+		// For the lowered carry: where the weapon sits on the right hand, and the rig's left palm in weapon space
+		const TArray<FName> (&RigLeft)[5] = ThirdPersonRigFingers[1];
+		if (bPalmOnHand && !WeaponData->ThirdPersonLeftHandBone.IsNone() && ThirdPersonMesh->GetBoneIndex(WeaponData->ThirdPersonLeftHandBone) != INDEX_NONE
+			&& RigLeft[1].Num() && RigLeft[2].Num() && RigLeft[4].Num())
+		{
+			auto RigCS = [this](FName Bone) { return ThirdPersonMesh->GetBoneLocation(Bone, EBoneSpaces::ComponentSpace); };
+			const FVector LW = RigCS(WeaponData->ThirdPersonLeftHandBone), LI = RigCS(RigLeft[1][0]), LM = RigCS(RigLeft[2][0]), LP = RigCS(RigLeft[4][0]);
+			WeaponGrip.bHasGunFromRightHand = true;
+			WeaponGrip.GunFromRightHand = OnHand.GetRelativeTransform(HandTransform);
+			WeaponGrip.LeftPalmInGun = FTHHandShape::MakePalm(LW, LI, LM, LP);
+			WeaponGrip.LeftFrameInGun = FTHHandShape::MakeFrame(LW, LI, LM, LP);
+			WeaponGrip.HoldRotation = WeaponData->CameraHoldOffset.GetRotation();
+		}
+
+		// The rig's hands as they hold the weapon (palm, its facing, finger directions), for the body to copy
+		const USkeletalMesh* RigMesh = ThirdPersonMesh->GetSkeletalMeshAsset();
+		if (RigMesh && ThirdPersonRigFingersMesh.Get() != RigMesh)
+		{
+			ThirdPersonRigFingersMesh = RigMesh;
+			FTHHandShape::FindFingers(RigMesh->GetRefSkeleton(), WeaponData->ThirdPersonGripBone, ThirdPersonRigFingers[0]);
+			FTHHandShape::FindFingers(RigMesh->GetRefSkeleton(), WeaponData->ThirdPersonLeftHandBone, ThirdPersonRigFingers[1]);
+		}
+		auto MakeShape = [&](FName HandBone, const TArray<FName> (&Fingers)[FTHHandShape::NumFingers])
+		{
+			FTHHandShape Shape;
+			if (!WeaponData->bThirdPersonMatchRigHands || HandBone.IsNone() || ThirdPersonMesh->GetBoneIndex(HandBone) == INDEX_NONE
+				|| !Fingers[1].Num() || !Fingers[2].Num() || !Fingers[4].Num())
+			{
+				return Shape;
+			}
+			const FVector Wrist = InAimSpace(HandBone);
+			const FVector Index = InAimSpace(Fingers[1][0]);
+			const FVector Middle = InAimSpace(Fingers[2][0]);
+			const FVector Pinky = InAimSpace(Fingers[4][0]);
+			Shape.bValid = true;
+			Shape.Frame = FTHHandShape::MakeFrame(Wrist, Index, Middle, Pinky);
+			Shape.Palm = FTHHandShape::MakePalm(Wrist, Index, Middle, Pinky);
+			for (int32 Finger = 0; Finger < FTHHandShape::NumFingers; ++Finger)
+			{
+				const TArray<FName>& Chain = Fingers[Finger];
+				Shape.NumDirections[Finger] = FMath::Clamp(Chain.Num() - 1, 0, FTHHandShape::MaxJoints);
+				for (int32 Joint = 0; Joint < Shape.NumDirections[Finger]; ++Joint)
+				{
+					Shape.FingerDirections[Finger][Joint] = (InAimSpace(Chain[Joint + 1]) - InAimSpace(Chain[Joint])).GetSafeNormal();
+				}
+			}
+			return Shape;
+		};
+		WeaponGrip.RightShape = MakeShape(WeaponData->ThirdPersonGripBone, ThirdPersonRigFingers[0]);
+		WeaponGrip.LeftShape = MakeShape(WeaponData->ThirdPersonLeftHandBone, ThirdPersonRigFingers[1]);
 		if (WeaponGrip.bLeftHandFollowsRight)
 		{
 			WeaponGrip.bLeftHand = true;
@@ -506,9 +620,10 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 		else
 		{
 			WeaponGrip.bLeftHand = !WeaponData->ThirdPersonLeftHandBone.IsNone() && ThirdPersonMesh->GetBoneIndex(WeaponData->ThirdPersonLeftHandBone) != INDEX_NONE;
+			// With a shape the palm already says where the hand goes, so the target is just the nudge
 			if (WeaponGrip.bLeftHand)
 			{
-				WeaponGrip.LeftHandTarget = InAimSpace(WeaponData->ThirdPersonLeftHandBone) + Hold.LeftOffset;
+				WeaponGrip.LeftHandTarget = (WeaponGrip.LeftShape.bValid ? FVector::ZeroVector : InAimSpace(WeaponData->ThirdPersonLeftHandBone)) + Hold.LeftOffset;
 			}
 		}
 		BodyAnim->SetWeaponGrip(WeaponGrip);
@@ -630,12 +745,17 @@ void ATHWeaponBase::HandleFiring()
 		return;
 	}
 
+	// Whether this shot continues a held trigger (full auto), before this shot marks the pull as fired
+	const bool bContinuingBurst = bFiredThisTriggerPull;
+
 	FireShot();
 	bFiredThisTriggerPull = true;
 
-	// Keep a steady cadence when the frame lands slightly late, but don't bank shots after a pause
+	// While the trigger is held, keep a steady cadence when the frame lands slightly late (but don't bank shots after
+	// a pause). A new trigger pull always waits a full interval from this shot: otherwise a click just after the last
+	// one was due could fire almost immediately, faster than full auto.
 	const float Interval = WeaponData->GetFireInterval();
-	NextFireTime = (Now - NextFireTime < Interval) ? NextFireTime + Interval : Now + Interval;
+	NextFireTime = (bContinuingBurst && Now - NextFireTime < Interval) ? NextFireTime + Interval : Now + Interval;
 }
 
 void ATHWeaponBase::FireShot()
@@ -1006,6 +1126,14 @@ void ATHWeaponBase::PlayFireEffects()
 	if (const UTHBodyAnimSet* BodySet = WeaponData->BodyAnimSet)
 	{
 		PlayBodyAction(BodySet->Fire, 0.0f, 0.0f, 0.1f);
+	}
+	// Shooting brings the weapon up from a lowered carry (and keeps it up for the set's Ready Hold Time)
+	if (const UTHWeaponComponent* Weapons = GetOwningPawn() ? GetOwningPawn()->FindComponentByClass<UTHWeaponComponent>() : nullptr)
+	{
+		if (UTHBodyAnimInstance* Body = Weapons->GetBodyAnimInstance())
+		{
+			Body->RaiseWeapon();
+		}
 	}
 
 	if (IsLocallyControlledOwner() && WeaponData->FireCameraShake)

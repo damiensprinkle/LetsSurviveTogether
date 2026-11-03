@@ -208,6 +208,25 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
 	bool bThirdPersonLeftHandFollowsRight = false;
 
+	/**
+	 * The body's hands copy this weapon's first-person hands: palm placed and turned to match, each finger pointing the
+	 * same way. Finds the finger bones by name (thumb / index / middle / ring / pinky) below ThirdPersonGripBone and
+	 * ThirdPersonLeftHandBone. The hand offsets and rotations below then nudge from there. Off: hands keep the
+	 * body animation's angle and fingers.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	bool bThirdPersonMatchRigHands = true;
+
+	/**
+	 * Moves the right / left shoulder (by turning the clavicle), in aim space: X forward, Y right, Z up. The hand stays
+	 * on the gun, so a shoulder moved toward it bends that elbow more (X +5..+10 for a rolled-forward support shoulder).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
+	FVector ThirdPersonRightShoulderOffset = FVector::ZeroVector;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
+	FVector ThirdPersonLeftShoulderOffset = FVector::ZeroVector;
+
 	/** Nudges the right hand from the grip bone, in aim space: X forward, Y right, Z up. The weapon stays put. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
 	FVector ThirdPersonRightHandOffset = FVector::ZeroVector;
