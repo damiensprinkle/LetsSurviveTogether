@@ -38,9 +38,12 @@ static TAutoConsoleVariable<int32> CVarAutoEquip(
 	TEXT("th.AutoEquip"), -1, TEXT("Equip this loadout slot (0 = primary, 1 = secondary) once the weapons exist (-1 = off)."));
 static TAutoConsoleVariable<bool> CVarBlockCameraShakes(
 	TEXT("th.BlockCameraShakes"), false, TEXT("Stop every camera shake on the local player each frame."));
+static TAutoConsoleVariable<int32> CVarThirdPerson(
+	TEXT("th.ThirdPerson"), 0,
+	TEXT("1 = watch your own character from outside, as other players see it (weapon in hand, body animation). 0 = normal view. Camera placement: th.ThirdPersonView."));
 static TAutoConsoleVariable<FString> CVarThirdPersonView(
-	TEXT("th.ThirdPersonView"), TEXT(""),
-	TEXT("\"distance angle height [lookheight]\": watch your own character from a camera at this distance (cm), angle around it (0 = in front, 90 = its right, 180 = behind) and height, looking at lookheight above its centre (default 20). Shows what other players see. Empty = normal view."));
+	TEXT("th.ThirdPersonView"), TEXT("200 60 20 40"),
+	TEXT("Camera for th.ThirdPerson: \"distance angle height [lookheight]\" - distance (cm), angle around the character (0 = in front, 90 = its right, 180 = behind), height, and the point it looks at above the character's centre (default 20)."));
 static TAutoConsoleVariable<float> CVarAutoWalkAngle(
 	TEXT("th.AutoWalkAngle"), 0.0f, TEXT("Direction th.AutoWalk moves in, degrees from facing (90 = strafe right, 180 = backwards)."));
 static TAutoConsoleVariable<float> CVarAutoLookPitch(
@@ -245,6 +248,10 @@ void UTHAutoTestSubsystem::TickThirdPersonView(APlayerController* PC, APawn* Paw
 	TArray<FString> Values;
 	CVarThirdPersonView.GetValueOnGameThread().ParseIntoArrayWS(Values);
 	if (Values.Num() != 3 && Values.Num() != 4)
+	{
+		Values = { TEXT("200"), TEXT("60"), TEXT("20"), TEXT("40") };
+	}
+	if (CVarThirdPerson.GetValueOnGameThread() == 0)
 	{
 		if (ACameraActor* Camera = ThirdPersonCamera.Get())
 		{

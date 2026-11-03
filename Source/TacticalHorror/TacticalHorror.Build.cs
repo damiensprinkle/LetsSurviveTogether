@@ -18,6 +18,7 @@ public class TacticalHorror : ModuleRules
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
+			"AnimationCore",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"UMG",

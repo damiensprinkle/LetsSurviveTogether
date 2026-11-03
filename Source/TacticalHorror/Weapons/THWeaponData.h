@@ -181,17 +181,48 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
 	TObjectPtr<class UTHBodyAnimSet> BodyAnimSet;
 
-	/** Bone or socket on the body mesh that holds the weapon. */
+	/** Body bone the weapon is placed from. The head, so the stock stays at the shoulder and the sights at the eye. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	FName ThirdPersonAnchorBone = TEXT("head");
+
+	/** Where the weapon's grip bone (the right hand's spot) sits from the anchor bone, in aim space: X forward, Y right, Z up. Moves the whole weapon. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
+	FVector ThirdPersonAnchorOffset = FVector(18.0f, 5.0f, -12.0f);
+
+	/** Body bone the weapon follows while the hands are busy (reload, equip). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
 	FName ThirdPersonHandBone = TEXT("hand_r");
 
-	/** Bone on the weapon mesh placed on ThirdPersonHandBone. For first-person rigs with arms: their right hand. */
+	/** Bone on the weapon mesh where the body's right hand goes. For first-person rigs with arms: their right hand. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
 	FName ThirdPersonGripBone = TEXT("righthand");
 
-	/** Nudges the weapon from the hand, in aim space: X forward, Y right, Z up. */
+	/** Bone on the weapon mesh where the body's left hand goes. For first-person rigs with arms: their left hand. None = left hand not on the weapon. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	FName ThirdPersonLeftHandBone = TEXT("lefthand");
+
+	/**
+	 * The left hand keeps the body animation's place relative to the right hand instead of going to ThirdPersonLeftHandBone.
+	 * For weapons whose body animation already has a good two-handed grip (pistols); ThirdPersonLeftHandOffset nudges it from there.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	bool bThirdPersonLeftHandFollowsRight = false;
+
+	/** Nudges the right hand from the grip bone, in aim space: X forward, Y right, Z up. The weapon stays put. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
-	FVector ThirdPersonGripOffset = FVector::ZeroVector;
+	FVector ThirdPersonRightHandOffset = FVector::ZeroVector;
+
+	/** Nudges the left hand from its bone, in aim space: X forward, Y right, Z up. The weapon stays put. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person", meta = (Units = "cm"))
+	FVector ThirdPersonLeftHandOffset = FVector::ZeroVector;
+
+	/** Turns the right hand from the animation's angle, about the aim axes: pitch tips the fingers up, yaw turns them right, roll turns about the barrel. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	FRotator ThirdPersonRightHandRotation = FRotator::ZeroRotator;
+
+	/** Turns the left hand from the animation's angle, about the aim axes, as ThirdPersonRightHandRotation. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
+	FRotator ThirdPersonLeftHandRotation = FRotator::ZeroRotator;
 
 	/** The weapon points where the player aims; this tilts it from there. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
@@ -203,7 +234,7 @@ public:
 
 	/** Bones (and everything below them) hidden on the third-person copy, e.g. the spare magazine a first-person rig parks beside the gun. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
-	TArray<FName> ThirdPersonHiddenBones = { TEXT("mag2_j") };
+	TArray<FName> ThirdPersonHiddenBones = { TEXT("mag2_j"), TEXT("mag2") };
 
 	/** The third-person copy holds the first frame of this. Empty = IdleAnimation. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")

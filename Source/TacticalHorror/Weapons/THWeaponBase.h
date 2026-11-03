@@ -149,6 +149,9 @@ private:
 	void AttachThirdPersonMesh();
 	void UpdateThirdPersonMesh();
 
+	/** Direction cosmetics use (third-person weapon, muzzle flash, casings). */
+	static FRotator GetPresentationAim(const APawn* Pawn);
+
 	/** The copy this machine shows: first person for the owner, third person for everyone else. */
 	USkeletalMeshComponent* GetVisibleMesh() const;
 
@@ -222,6 +225,14 @@ private:
 
 	/** Body mesh the third-person copy is attached to; also a tick prerequisite so the hand has moved first. */
 	TWeakObjectPtr<USkeletalMeshComponent> ThirdPersonBody;
+
+	/**
+	 * While the hands are on the weapon (hand IK) it is placed from the head along the aim, and this records where it is
+	 * relative to the right hand. While an action (reload, equip, fire) takes the hands, it rides the right hand at
+	 * that offset, so it follows the animation; the two blend by the hand IK weight.
+	 */
+	FTransform ThirdPersonHandOffset;
+	bool bHasThirdPersonHandOffset = false;
 
 	/** This weapon's casings still in the world, oldest first, so the count can be capped. */
 	TArray<TWeakObjectPtr<class ATHShellCasing>> ShellCasings;

@@ -36,7 +36,46 @@ static TAutoConsoleVariable<int32> CVarMuzzleFlashQuality(
 	TEXT("th.MuzzleFlashQuality"), 1, TEXT("Muzzle flash brightness: 0 = low, 1 = medium, 2 = high."));
 static TAutoConsoleVariable<int32> CVarDebugThirdPerson(
 	TEXT("th.DebugThirdPersonWeapon"), 0, TEXT("1 = log where the third-person weapon copy is placed every frame; 2 = also draw it with the default material."));
+static TAutoConsoleVariable<FString> CVarThirdPersonTune(
+	TEXT("th.ThirdPersonTune"), TEXT(""),
+	TEXT("Live tuning of the held weapon's third-person hold, added to its data asset values (copy the result into the asset): ")
+	TEXT("\"anchorX anchorY anchorZ  rightX rightY rightZ  rightPitch rightYaw rightRoll  leftX leftY leftZ  leftPitch leftYaw leftRoll\". Missing values = 0."));
 #include "TacticalHorror.h"
+
+namespace
+{
+	/** The held weapon's third-person hold values plus th.ThirdPersonTune. */
+	struct FThirdPersonHold
+	{
+		FVector Anchor;
+		FVector RightOffset;
+		FRotator RightRotation;
+		FVector LeftOffset;
+		FRotator LeftRotation;
+	};
+
+	FThirdPersonHold GetThirdPersonHold(const UTHWeaponData& Data)
+	{
+		FThirdPersonHold Hold{ Data.ThirdPersonAnchorOffset, Data.ThirdPersonRightHandOffset, Data.ThirdPersonRightHandRotation,
+			Data.ThirdPersonLeftHandOffset, Data.ThirdPersonLeftHandRotation };
+		TArray<FString> Parts;
+		CVarThirdPersonTune.GetValueOnGameThread().ParseIntoArrayWS(Parts);
+		if (!Parts.IsEmpty())
+		{
+			float V[15] = {};
+			for (int32 Index = 0; Index < FMath::Min(Parts.Num(), 15); ++Index)
+			{
+				V[Index] = FCString::Atof(*Parts[Index]);
+			}
+			Hold.Anchor += FVector(V[0], V[1], V[2]);
+			Hold.RightOffset += FVector(V[3], V[4], V[5]);
+			Hold.RightRotation += FRotator(V[6], V[7], V[8]);
+			Hold.LeftOffset += FVector(V[9], V[10], V[11]);
+			Hold.LeftRotation += FRotator(V[12], V[13], V[14]);
+		}
+		return Hold;
+	}
+}
 
 ATHWeaponBase::ATHWeaponBase()
 {
@@ -393,9 +432,14 @@ void ATHWeaponBase::AttachThirdPersonMesh()
 	{
 		RemoveTickPrerequisiteComponent(Previous);
 	}
+	if (Body != ThirdPersonBody.Get())
+	{
+		bHasThirdPersonHandOffset = false;
+	}
 	ThirdPersonBody = Body;
 	AddTickPrerequisiteComponent(Body);
 
+	// Attached to the hand so that, between our updates, it moves with it
 	ThirdPersonMesh->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponData->ThirdPersonHandBone);
 	UpdateThirdPersonMesh();
 }
@@ -409,16 +453,66 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 		return;
 	}
 
-	// Barrel along the aim (as in first person, so effects line up), grip bone on the body's hand.
-	// The hand follows the body animation, so walking, reloading and aim pitch move the weapon with it.
-	// Yaw from the body (it turns with the view; for other players' characters the aim yaw is the body's anyway)
-	const FRotator AimRotation(Pawn->GetBaseAimRotation().Pitch, Pawn->GetActorRotation().Yaw, 0.0f);
-	const FQuat Aim = AimRotation.Quaternion() * WeaponData->ThirdPersonRotationOffset.Quaternion();
+	// Barrel along the aim (as in first person, so effects line up), grip bone at the anchor offset from the head.
+	// The body's hand IK uses the same formula (FTHWeaponGrip), so the hands land on the grips.
+	const FQuat Aim = Body->GetComponentQuat() * FTHWeaponGrip::GetAimInComponentSpace(Pawn, Body, WeaponData->ThirdPersonRotationOffset);
 	const FQuat Rotation = Aim * WeaponData->CameraHoldOffset.GetRotation();
+	const FVector Scale = ThirdPersonMesh->GetComponentScale();
 	const FVector Grip = ThirdPersonMesh->GetBoneLocation(WeaponData->ThirdPersonGripBone, EBoneSpaces::ComponentSpace);
-	const FVector Hand = Body->GetSocketLocation(WeaponData->ThirdPersonHandBone);
-	const FVector Location = Hand + Aim.RotateVector(WeaponData->ThirdPersonGripOffset) - Rotation.RotateVector(Grip * ThirdPersonMesh->GetComponentScale());
-	ThirdPersonMesh->SetWorldLocationAndRotation(Location, Rotation);
+	const FTransform HandTransform = Body->GetSocketTransform(WeaponData->ThirdPersonHandBone);
+	UTHBodyAnimInstance* BodyAnim = Cast<UTHBodyAnimInstance>(Body->GetAnimInstance());
+
+	const FThirdPersonHold Hold = GetThirdPersonHold(*WeaponData);
+	const FVector GripPoint = Body->GetSocketLocation(WeaponData->ThirdPersonAnchorBone) + Aim.RotateVector(Hold.Anchor);
+	const FTransform Held(Rotation, GripPoint - Rotation.RotateVector(Grip * Scale), Scale);
+
+	// While the hands are on it, remember where it is relative to the right hand; while an action has the hands, ride
+	// that hand (before the first such moment: grip on the hand, barrel along the aim)
+	const float HandsOn = BodyAnim ? BodyAnim->GetHandIKAlpha() : 0.0f;
+	if (HandsOn > 0.99f)
+	{
+		ThirdPersonHandOffset = Held.GetRelativeTransform(HandTransform);
+		bHasThirdPersonHandOffset = true;
+	}
+	const FTransform OnHand = bHasThirdPersonHandOffset ? ThirdPersonHandOffset * HandTransform
+		: FTransform(Rotation, HandTransform.GetLocation() - Rotation.RotateVector(Grip * Scale), Scale);
+	FTransform Placed = Held;
+	if (HandsOn <= 0.99f)
+	{
+		Placed.Blend(OnHand, Held, HandsOn);
+	}
+	ThirdPersonMesh->SetWorldTransform(Placed);
+
+	if (BodyAnim)
+	{
+		// Hand targets from the first-person rig's own hand bones, relative to the grip point, in aim space
+		auto InAimSpace = [&](FName Bone)
+		{
+			return WeaponData->CameraHoldOffset.GetRotation().RotateVector((ThirdPersonMesh->GetBoneLocation(Bone, EBoneSpaces::ComponentSpace) - Grip) * Scale);
+		};
+		FTHWeaponGrip WeaponGrip;
+		WeaponGrip.AnchorBone = WeaponData->ThirdPersonAnchorBone;
+		WeaponGrip.AnchorOffset = Hold.Anchor;
+		WeaponGrip.RotationOffset = WeaponData->ThirdPersonRotationOffset;
+		WeaponGrip.RightHandTarget = Hold.RightOffset;
+		WeaponGrip.RightHandRotation = Hold.RightRotation;
+		WeaponGrip.LeftHandRotation = Hold.LeftRotation;
+		WeaponGrip.bLeftHandFollowsRight = WeaponData->bThirdPersonLeftHandFollowsRight;
+		if (WeaponGrip.bLeftHandFollowsRight)
+		{
+			WeaponGrip.bLeftHand = true;
+			WeaponGrip.LeftHandTarget = Hold.LeftOffset;
+		}
+		else
+		{
+			WeaponGrip.bLeftHand = !WeaponData->ThirdPersonLeftHandBone.IsNone() && ThirdPersonMesh->GetBoneIndex(WeaponData->ThirdPersonLeftHandBone) != INDEX_NONE;
+			if (WeaponGrip.bLeftHand)
+			{
+				WeaponGrip.LeftHandTarget = InAimSpace(WeaponData->ThirdPersonLeftHandBone) + Hold.LeftOffset;
+			}
+		}
+		BodyAnim->SetWeaponGrip(WeaponGrip);
+	}
 
 	if (CVarDebugThirdPerson.GetValueOnGameThread() == 3)
 	{
@@ -448,10 +542,17 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 			*FPBone.GetAxisX().ToString(), *FPBone.GetAxisY().ToString(), *FPBone.GetAxisZ().ToString(), *FPParent.GetForwardVector().ToString(),
 			*GetNameSafe(Mesh->GetAttachParent()));
 		UE_LOG(LogTacticalHorror, Warning, TEXT("TP %s: aim=%s hand=%s gripCS=%s gripWorld=%s muzzle=%s barrelDir=%s root=%s bones=%d anim=%s"),
-			*GetName(), *Aim.Rotator().ToString(), *Hand.ToString(), *Grip.ToString(), *GripWorld.ToString(), *Muzzle.ToString(),
+			*GetName(), *Aim.Rotator().ToString(), *HandTransform.GetLocation().ToString(), *Grip.ToString(), *GripWorld.ToString(), *Muzzle.ToString(),
 			*(Muzzle - GripWorld).GetSafeNormal().ToString(), *Root.ToString(), ThirdPersonMesh->GetNumBones(),
 			*GetNameSafe(ThirdPersonMesh->GetSingleNodeInstance() ? ThirdPersonMesh->GetSingleNodeInstance()->GetAnimationAsset() : nullptr));
 	}
+}
+
+FRotator ATHWeaponBase::GetPresentationAim(const APawn* Pawn)
+{
+	// Pitch from the aim, yaw from the body. Same as the aim in normal play (the body turns with the view; for other
+	// players' characters the aim yaw is the body's anyway), and stays right when watching from a debug camera.
+	return FRotator(Pawn->GetBaseAimRotation().Pitch, Pawn->GetActorRotation().Yaw, 0.0f);
 }
 
 USkeletalMeshComponent* ATHWeaponBase::GetVisibleMesh() const
@@ -944,7 +1045,7 @@ void ATHWeaponBase::ShowMuzzleFlash(const FTransform& Muzzle)
 	{
 		// The pawn's aim is the barrel direction on every machine; muzzle bones are not authored consistently between packs
 		const APawn* Pawn = GetOwningPawn();
-		const FVector Aim = Pawn ? Pawn->GetBaseAimRotation().Vector() : Muzzle.GetRotation().GetForwardVector();
+		const FVector Aim = Pawn ? GetPresentationAim(Pawn).Vector() : Muzzle.GetRotation().GetForwardVector();
 		const float Size = WeaponData->MuzzleFlashSize * Quality.Size * FMath::FRandRange(0.8f, 1.2f);
 
 		if (!MuzzleFlashMaterial || MuzzleFlashMaterial->Parent != WeaponData->MuzzleFlashMaterial)
@@ -994,7 +1095,7 @@ void ATHWeaponBase::EjectShellCasing(const FTransform& Muzzle)
 
 	// Aim space like the muzzle flash: the pawn's aim is the barrel direction on every machine
 	const APawn* Pawn = GetOwningPawn();
-	const FQuat Aim = Pawn ? Pawn->GetBaseAimRotation().Quaternion() : Muzzle.GetRotation();
+	const FQuat Aim = Pawn ? GetPresentationAim(Pawn).Quaternion() : Muzzle.GetRotation();
 	const FVector Location = Muzzle.GetLocation() + Aim.RotateVector(WeaponData->ShellEjectOffset);
 
 	const FVector& Base = WeaponData->ShellEjectVelocity;

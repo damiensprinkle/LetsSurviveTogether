@@ -11,9 +11,10 @@ class UBlendSpace;
  * Animations for the full body other players see (third person), for one way of holding things:
  * unarmed, rifle, pistol. Played by UTHBodyAnimInstance.
  *
- * Legs come from the locomotion slots. A weapon set may leave them empty to reuse the unarmed set's legs.
- * The upper body is replaced from UpperBodyRootBone up by UpperBodyPose, so walking and crouching keep
- * the weapon held. Aim offset and actions are additive and only touch the upper body.
+ * Legs come from the locomotion slots; any slot left empty uses the unarmed set's animation instead.
+ * While legs come from another set (or a slot fell back), the upper body from UpperBodyRootBone up is replaced by
+ * UpperBodyPose so the weapon stays held. Aim offset and actions only touch the upper body.
+ * The left hand can be pulled onto the weapon with IK (target supplied by the weapon).
  */
 UCLASS(BlueprintType)
 class TACTICALHORROR_API UTHBodyAnimSet : public UPrimaryDataAsset
@@ -21,8 +22,6 @@ class TACTICALHORROR_API UTHBodyAnimSet : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
-	bool HasLocomotion() const { return Idle != nullptr; }
-
 	// Locomotion (legs). Directional walks are blended by movement direction and sped up / slowed to match speed.
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
@@ -58,6 +57,13 @@ public:
 	/** Looped while in the air. Empty = keep walking. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
 	TObjectPtr<UAnimSequence> Falling;
+
+	/** Speed (cm/s) the walks move at when played normally, for matching play rate to the character's speed. 0 = measure it from the animations' root motion (in-place animations then play at normal rate). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion", meta = (ClampMin = 0, Units = "cm/s"))
+	float WalkAnimSpeed = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion", meta = (ClampMin = 0, Units = "cm/s"))
+	float CrouchAnimSpeed = 0.0f;
 
 	/** Limits how far walks are sped up or slowed down to match the character's speed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Locomotion")
@@ -96,4 +102,44 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions", meta = (ClampMin = 0, Units = "s"))
 	float ActionBlendTime = 0.15f;
+
+	// Hand IK: puts both hands where the weapon holds them (the weapon data's Third Person section places the weapon
+	// from the head). Fades out while a full-pose action (reload, equip) plays; the weapon then follows the right hand.
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK", meta = (ClampMin = 0, ClampMax = 1))
+	float HandIKWeight = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName RightUpperArmBone = TEXT("upperarm_r");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName RightLowerArmBone = TEXT("lowerarm_r");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName RightHandBone = TEXT("hand_r");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName LeftUpperArmBone = TEXT("upperarm_l");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName LeftLowerArmBone = TEXT("lowerarm_l");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand IK")
+	FName LeftHandBone = TEXT("hand_l");
+
+	// Hand pose: the fingers (every bone below the hand bones above) are copied from one frame of this animation
+	// while the hands are on the weapon, e.g. so the index finger is on the trigger.
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand Pose")
+	TObjectPtr<UAnimSequence> HandPose;
+
+	/** Frame of HandPose to use. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand Pose", meta = (ClampMin = 0, Units = "s"))
+	float HandPoseTime = 0.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand Pose")
+	bool bHandPoseRight = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hand Pose")
+	bool bHandPoseLeft = true;
 };

@@ -17,9 +17,12 @@ shells = {
 }
 # weapon: (shell, eject offset from muzzle in aim space X fwd / Y right / Z up, launch velocity in the same space)
 # Offsets measured from the rig: G17 slide (port ~6 cm behind the muzzle), M4 Bolt_j (45 cm behind).
+# Velocities keep casings landing within a metre or two to the right and slightly behind.
+# Collision: the casing actor has its own capsule (ATHShellCasing), so the mesh collision added below is optional;
+# add_simple_collisions does nothing when this runs headless.
 weapons = {
-    "G17": ("45",  unreal.Vector(-6.0, 1.0, 1.2),  unreal.Vector(-30.0, 200.0, 170.0)),
-    "M4":  ("762", unreal.Vector(-44.0, 1.5, 0.5), unreal.Vector(-40.0, 280.0, 110.0)),
+    "G17": ("45",  unreal.Vector(-6.0, 1.0, 1.2),  unreal.Vector(-40.0, 90.0, 110.0)),
+    "M4":  ("762", unreal.Vector(-44.0, 1.5, 0.5), unreal.Vector(-50.0, 110.0, 90.0)),
 }
 
 def import_file(path, dest, name, options=None, factory=None):
