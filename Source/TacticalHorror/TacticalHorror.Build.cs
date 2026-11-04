@@ -19,6 +19,7 @@ public class TacticalHorror : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"AnimationCore",
+			"EngineSettings",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
 			"UMG",

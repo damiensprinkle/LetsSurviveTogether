@@ -33,12 +33,12 @@ AGameMode
 
 ```
 Source/TacticalHorror/
-├── Core/          THGameInstance, THGameMode, THGameState (mission phase), THPlayerState (debrief stats)
+├── Core/          THGameInstance, THGameMode, THGameState (mission phase), THPlayerState (debrief stats), THMenuGameMode (+ menu player controller)
 ├── Player/        THCharacter, THCharacterMovementComponent, THPlayerController, THBodyAnimInstance, THBodyAnimSet
 │   └── Components/THHealthComponent
 ├── Weapons/       THWeaponBase, THWeaponComponent, THWeaponData, THWeaponTypes, THShellCasing, THAnimNotify_WeaponSound
 ├── Settings/      THAudioSettingsSubsystem
-├── UI/            THAudioSettingsWidget
+├── UI/            THAudioSettingsWidget (settings panel), THMainMenuWidget, THSessionEntryWidget, THCrosshairWidget, THAmmoWidget
 └── Multiplayer/   THSessionSubsystem
 ```
 
@@ -102,9 +102,29 @@ Planned (not yet created): `Equipment/`, `AI/`, `Missions/` — see TASKS.md. In
 - `ATHPlayerController` toggles the menu with **Escape** or **P** (plain key bindings, not Enhanced Input, so the pawn's contexts can't remove them). Escape never reaches the game in play-in-editor, so use P there. The game keeps running (co-op); input goes UI-only while open. Console: `ToggleAudioSettings`.
 - The widget builds its layout in C++. Set `AudioSettingsWidgetClass` on the controller to a Widget Blueprint subclass to restyle it.
 
+### Crosshair — `UTHCrosshairWidget` + `UTHCrosshairSettingsSubsystem`
+- `ATHPlayerController` adds `UTHCrosshairWidget` (`CrosshairWidgetClass`) for the local player: a centred image, shown while holding a weapon and looking through your own eyes, hidden while aiming down sights.
+- The player's style index, size (8–128 px) and RGB colour live in `UTHCrosshairSettingsSubsystem` (GameUserSettings.ini, saved when the settings panel closes); `OnChanged` updates the crosshair live. The settings panel (`UTHAudioSettingsWidget`, the general settings panel despite its name) has the Crosshair section.
+- The style list is project config: `UTHCrosshairWidget::Styles` in `DefaultGame.ini`, pointing at `Content/UI/Crosshairs/T_CH*` (white with a dark outline; the colour tints the white). Add a style = import the PNG (`Scripts/Tools/import_crosshairs.py`) and add a `+Styles=` line.
+- The template's `WB_HUD` → `WB_Crosshair` draws a dot (and a hand when looking at something usable). The crosshair widget finds it at run time, keeps its dot hidden and hides itself while the hand shows, so the template's interaction hint still works. Removing the dot from `WB_Crosshair` in the editor would make that step unnecessary.
+
+### Ammo readout — `UTHAmmoWidget`
+- Added by `ATHPlayerController` (`AmmoWidgetClass`) next to the crosshair. Bottom right: magazine / reserve, fire mode (only for weapons with more than one mode), "RELOADING" while reloading; the magazine count turns red at or below 25% (`LowAmmoFraction`). Reads `GetCurrentAmmo()` / `GetReserveAmmo()` / `GetFireMode()` / `IsReloading()` from the held weapon each frame and only changes text when a value changes. Hidden without a weapon or in the outside debug view. Widget names for a Blueprint: `MagazineText`, `ReserveText`, `FireModeText`.
+
+### Leave Game — `ATHPlayerController::LeaveGame`
+- The settings panel shows **Leave Game** in game only (`bShowLeaveGame`). It calls `UTHSessionSubsystem::LeaveSession()` and opens the start map (`GameDefaultMap`, the main menu). A host leaving closes the server; its clients are sent back to their menu by the engine's network-failure handling. Also a console command (`LeaveGame`).
+
 ### Sessions — `UTHSessionSubsystem`
 - `HostSession(MapPath, MaxPlayers, bLAN)` → creates session + `ServerTravel(map?listen)`; `FindSessions`, `JoinSession(index)`, `LeaveSession`. Blueprint delegates for each.
-- Uses OnlineSubsystem **Null** (LAN) today (`DefaultEngine.ini`). EOS later only touches config + this class.
+- Uses OnlineSubsystem **Null** (LAN) today (`DefaultEngine.ini`). Steam (or EOS) later only touches config + this class.
+
+### Main menu — `ATHMenuGameMode`, `ATHMenuPlayerController`, `UTHMainMenuWidget`, `UTHSessionEntryWidget`
+- `/Game/Maps/MainMenu` is the game's start map (`GameDefaultMap`); the editor still opens `Demo`. Its World Settings use `ATHMenuGameMode` (no pawn), whose player controller shows the menu with UI-only input.
+- The menu only calls `UTHSessionSubsystem`: **Host Game** → `HostSession(HostMapPath = /Game/Demo, MaxPlayers 4)`; **Find Games** → `FindSessions`, one `UTHSessionEntryWidget` per result, its Join → `JoinSession(index)`; **Settings** opens `UTHAudioSettingsWidget` on top; **Quit**. `HostMapPath` / `MaxPlayers` are config (`DefaultGame.ini`).
+- Look: each widget builds a plain layout in code when it has no widget tree. A Widget Blueprint based on the class replaces it without code changes; the C++ finds its widgets by name (`BindWidgetOptional`: `HostButton`, `FindButton`, `SettingsButton`, `QuitButton`, `SessionList`, `StatusText`; rows `JoinButton`, `NameText`, `InfoText`). Point `ATHMenuPlayerController::MainMenuWidgetClass` (config) and the menu's *Session Entry Class* at the Blueprints.
+- A client whose host leaves is sent back to the start map (the menu) by the engine's network-failure handling.
+- Both maps are in `MapsToCook` (`DefaultGame.ini`), because `Demo` is only reached by name.
+- Test helper `th.AutoMenu` (1 = host, 2 = find and join the first game) for off-screen two-instance tests.
 
 ### Mission state — `ATHGameState`
 - Replicated `ETHMissionPhase` (Preparation, Briefing, Deployment, Active, Extraction, Debrief, Failed) + `OnMissionPhaseChanged`. Mission/objective framework is Milestone 5.

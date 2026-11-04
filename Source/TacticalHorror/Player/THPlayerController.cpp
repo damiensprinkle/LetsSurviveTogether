@@ -1,5 +1,11 @@
 #include "Player/THPlayerController.h"
 #include "UI/THAudioSettingsWidget.h"
+#include "UI/THCrosshairWidget.h"
+#include "UI/THAmmoWidget.h"
+#include "Multiplayer/THSessionSubsystem.h"
+#include "GameMapsSettings.h"
+#include "Kismet/GameplayStatics.h"
+#include "TacticalHorror.h"
 #include "Settings/THAudioSettingsSubsystem.h"
 #include "Weapons/THWeaponBase.h"
 #include "Weapons/THWeaponComponent.h"
@@ -10,6 +16,47 @@
 ATHPlayerController::ATHPlayerController()
 {
 	AudioSettingsWidgetClass = UTHAudioSettingsWidget::StaticClass();
+	CrosshairWidgetClass = UTHCrosshairWidget::StaticClass();
+	AmmoWidgetClass = UTHAmmoWidget::StaticClass();
+}
+
+void ATHPlayerController::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (!IsLocalController())
+	{
+		return;
+	}
+	if (CrosshairWidgetClass)
+	{
+		CrosshairWidget = CreateWidget<UTHCrosshairWidget>(this, CrosshairWidgetClass);
+		if (CrosshairWidget)
+		{
+			CrosshairWidget->AddToViewport(-10);
+		}
+	}
+	if (AmmoWidgetClass)
+	{
+		AmmoWidget = CreateWidget<UTHAmmoWidget>(this, AmmoWidgetClass);
+		if (AmmoWidget)
+		{
+			AmmoWidget->AddToViewport(-10);
+		}
+	}
+}
+
+void ATHPlayerController::LeaveGame()
+{
+	CloseAudioSettings();
+	if (UTHSessionSubsystem* Sessions = GetGameInstance() ? GetGameInstance()->GetSubsystem<UTHSessionSubsystem>() : nullptr)
+	{
+		Sessions->LeaveSession();
+	}
+	// Back to the start map (the main menu). For a host this closes the server, and the clients go back to their menu.
+	const FString MenuMap = UGameMapsSettings::GetGameDefaultMap();
+	UE_LOG(LogTacticalHorror, Log, TEXT("Leaving game for %s"), *MenuMap);
+	UGameplayStatics::OpenLevel(this, FName(*FPackageName::ObjectPathToPackageName(MenuMap)));
 }
 
 void ATHPlayerController::SetupInputComponent()
@@ -30,6 +77,16 @@ void ATHPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		AudioSettingsWidget->RemoveFromParent();
 		AudioSettingsWidget = nullptr;
+	}
+	if (CrosshairWidget)
+	{
+		CrosshairWidget->RemoveFromParent();
+		CrosshairWidget = nullptr;
+	}
+	if (AmmoWidget)
+	{
+		AmmoWidget->RemoveFromParent();
+		AmmoWidget = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
 }
@@ -66,6 +123,8 @@ void ATHPlayerController::OpenAudioSettings()
 			return;
 		}
 		AudioSettingsWidget->OnCloseRequested.BindUObject(this, &ATHPlayerController::CloseAudioSettings);
+		AudioSettingsWidget->OnLeaveGameRequested.BindUObject(this, &ATHPlayerController::LeaveGame);
+		AudioSettingsWidget->bShowLeaveGame = true;
 	}
 
 	// Co-op: the game keeps running. Stop a held trigger, since its release won't reach the game while the menu has input.

@@ -10,6 +10,10 @@ AI-made content that is currently in the game. Move a row to *Replaced* when you
 
 | Asset | What it is | Used by | How to replace |
 |---|---|---|---|
+| Main menu layout and text: "Host Game", "Find Games", "Settings", "Quit", "Games on your network", "Join", "{0}/{1} players · {2} ms", and the status lines ("Starting a game…", "Searching for games…", "No games found.", "{0} games found.", "Joining…", "Couldn't start the game.", "Couldn't search for games.", "Couldn't join that game.") | Placeholder menu: dark backdrop, grey buttons, the game title in plain text | `UTHMainMenuWidget`, `UTHSessionEntryWidget` (main menu map) | Make a Widget Blueprint based on `THMainMenuWidget` with widgets named `HostButton`, `FindButton`, `SettingsButton`, `QuitButton`, `SessionList`, `StatusText` and set it in `DefaultGame.ini` (`[/Script/TacticalHorror.THMenuPlayerController] MainMenuWidgetClass=...`); the same for the game rows via `THSessionEntryWidget` (`JoinButton`, `NameText`, `InfoText`) and the menu's *Session Entry Class*. The status lines are `LOCTEXT` in `THMainMenuWidget.cpp`; override them by handling *On Status Changed* in the Blueprint, or edit the strings. |
+| Ammo readout text and look: the "{0}" / "/ {0}" counts, "AUTO", "SEMI", "RELOADING", bottom-right layout, red when low | Placeholder HUD | `UTHAmmoWidget` (in game) | Widget Blueprint based on `THAmmoWidget` with `MagazineText`, `ReserveText`, `FireModeText` (or handle *On Ammo Changed*), set as the player controller's *Ammo Widget Class*; or edit the `LOCTEXT` strings in `THAmmoWidget.cpp` |
+| Settings panel "Leave Game" button | Placeholder label | `UTHAudioSettingsWidget` (in game only) | `LOCTEXT` in `THAudioSettingsWidget.cpp`, or the panel's Widget Blueprint |
+| Settings panel crosshair text and look: "Settings", "Crosshair", "Style", "<", ">", "{0} / {1}", "Size", "Red", "Green", "Blue" (and the grey preview square) | Placeholder labels for the crosshair section | `UTHAudioSettingsWidget` (the settings panel) | Edit the `LOCTEXT` strings in `THAudioSettingsWidget.cpp`, or replace the panel with a Widget Blueprint (`AudioSettingsWidgetClass` on the player controller) |
 | Audio settings menu text: "Audio", "Master", "Gunshots", "Close" | Placeholder labels and the panel's look (dark box, sliders, percentages) | `UTHAudioSettingsWidget` (Escape / P in game) | Edit the `LOCTEXT` strings in `Source/TacticalHorror/UI/THAudioSettingsWidget.cpp`, or make a Widget Blueprint and set it as `AudioSettingsWidgetClass` on the player controller |
 
 Replacing a texture: save over its source PNG in `SourceArt/`, then in the editor right-click the texture → **Reimport** (Unreal only watches `Content/`, not `SourceArt/`).
@@ -32,7 +36,10 @@ Not art, but listed for completeness. Rebuild them yourself if you want a clean 
 | `Content/Effects/MI_MuzzleFlash` | Instance of the above used by all guns: Color white (the flash art is already coloured), Intensity 10. Tune the flash here. |
 | `Content/Effects/M_BulletHole` | Deferred decal material: texture RGB → base colour, alpha → opacity, roughness 0.9. |
 | `Content/Characters/BodyAnimSets/DA_Body_*` | Data assets listing which existing animations (Epic's Lyra and UE5 template packs) the third-person body plays per weapon. No new animation. `Scripts/Tools/setup_body_anims.py`. |
-| `Content/Weapons/Ammo/{45,762}/MI_Shell_*` | Casing material instances (FBX Phong parent) wired to the vendor's diffuse and normal textures. Capsule collision added to `SM_Shell_*`. `Scripts/Tools/setup_shells.py`. |
+| `Content/Weapons/Ammo/{45,762}/MI_Shell_*`, `Content/Weapons/Ammo/M_Shell_Metal` | Casing materials wired to the vendor's textures: metallic, colour and gloss from the pack's *_SPECULAR, normal map. Capsule collision added to `SM_Shell_*`. `Scripts/Tools/setup_shells.py`, `shell_metal_material.py`. |
+| `Content/Characters/Mannequins/Anims/Pistol/MM_Pistol_Idle_Hipfire` | Epic's Lyra UE4 pistol hip-fire idle, retargeted to the UE5 mannequin with Epic's retargeter (no new motion), then hand-posed by the developer. `Scripts/Tools/retarget_pistol_idle.py`. |
+| `Content/Maps/MainMenu` | Empty level with the menu game mode. `Scripts/Tools/create_main_menu_map.py`. |
+| `Content/UI/Crosshairs/T_CH001`–`T_CH008` | The developer's crosshair images (`SourceArt/UI/Crosshairs`, copied from the developer's `CrossHairs+Others` folder), imported as UI textures. Not AI-made; only the import is. `Scripts/Tools/import_crosshairs.py`. |
 
 ## Vendor assets edited by the AI (technical, not new art)
 

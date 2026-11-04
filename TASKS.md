@@ -48,6 +48,25 @@ Small, bounded tasks. Each should end with: compiles, tested in PIE (2 players w
 - The template's body used to sink into the floor when crouching (only visible to other players); fixed in `ATHCharacter::OnStartCrouch`.
 - Player-vs-player hits: `ATHCharacter` sets the Weapon trace channel on ACharacter's own `Mesh`, which is empty in this template (the body is a separate component). Check friendly-fire hits and headshots in the two-player test.
 
+## Main menu (2026-11-03)
+Built: `/Game/Maps/MainMenu` is the game's start map (the editor still opens `Demo`). Host Game, Find Games (LAN list with Join), Settings (audio panel), Quit. Checked off-screen with two game instances on one PC: one hosted, the other found it, joined, and was welcomed into `Demo`; when the host quit, the client returned to the menu.
+
+**To test it in the editor:**
+1. Open `Content/Maps/MainMenu`.
+2. Play menu (**⋮** next to Play): **Number of Players** 2, **Net Mode** *Play Standalone*. Under *Advanced Settings*, untick **Run Under One Process** so each window is its own game, as on two PCs.
+3. Press Play. In window 1 click **Host Game**. In window 2 click **Find Games**, then **Join** on the game that appears.
+4. Check: both end up in `Demo` together, can see each other, and the client goes back to the menu if the host quits.
+
+Not done yet: an in-game "Leave game" button, a lobby, and a real menu design (a Widget Blueprint; see AI_CONTENT.md and TECHNICAL_ARCHITECTURE.md *Main menu* for the widget names).
+
+## Crosshair (2026-11-03)
+Built: the 8 `T_CH*` crosshairs (copied to `SourceArt/UI/Crosshairs`, imported to `Content/UI/Crosshairs`). In game, **P** (or Escape) → Settings → *Crosshair*: style `<` / `>` with a preview, Size, Red / Green / Blue. Saved per player. Hidden while aiming down sights; the template's dot is hidden, and the template's hand hint still appears on usable objects. Checked off-screen: default crosshair in first person, the settings panel, and a saved choice (style 7, size 72, green) loading on the next start.
+To check in play: the sliders update the crosshair live, it hides on right-click, and how it looks next to the template's hand on a door.
+
+## Ammo counter and Leave Game (2026-11-03)
+Built: ammo readout bottom right (`30 / 90`, AUTO / SEMI, RELOADING, red when low) and **Leave Game** in the in-game settings panel (back to the main menu). Checked off-screen: the count going 30 → 25 → 11 → red 0 RELOADING under full auto, the panel showing Leave Game, and Leave Game loading the main menu.
+To check in play: the G17 shows no fire mode (it only has one), switching weapons updates the counter, and a client leaving / the host leaving in a two-player game.
+
 ## Next and later
 The ordered plan and every planned feature (crosshairs, blood, bullet holes, doors, downed / revive, animation cleanup, more guns, menus, Steam, …) are in **ROADMAP.md**, starting with its *Now* list.
 

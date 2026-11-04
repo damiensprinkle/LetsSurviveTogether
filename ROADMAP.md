@@ -14,7 +14,7 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 3. **Two-player play test** (Milestone 1 exit). Run *Play As Listen Server* with 2 players and go through the checklist in TASKS.md.
 4. **Animation cleanup and naming** (see *Content pipeline*). Do this before adding more guns; it gets harder with every asset that references the old names.
 5. **Crosshair and ammo HUD**, then **hit feedback**: hit marker, blood, bullet holes.
-6. **Main menu with Host / Join** (Milestone 1 exit, Milestone 6 start).
+6. 🟡 **Main menu with Host / Join**: built 2026-11-03; play-test it (two PCs on the same network, or two game instances on one PC).
 
 ---
 
@@ -25,8 +25,9 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 - ✅ Enhanced Input (template context + runtime weapon context)
 - ✅ First-person character on `ATHCharacter`; CS-style movement (walk, quiet walk on Shift, crouch)
 - 🟡 Listen-server multiplayer (GameMode / GameState / PlayerState, `UTHSessionSubsystem`)
-- ⬜ **Exit:** two players connect to a host and move around the same level
-- ⬜ Main menu Host / Find / Join (LAN) wired to `UTHSessionSubsystem`
+- 🔧 **Exit:** two players connect to a host and move around the same level. Hosting and joining through the menu were checked off-screen between two game instances on one PC (2026-11-03); moving around together is still to be play-tested.
+- 🟡 Main menu (`/Game/Maps/MainMenu`, the game's start map): Host Game, Find Games with Join per game, Settings, Quit, via `UTHSessionSubsystem` (LAN now, Steam-ready). Plain placeholder look until a Widget Blueprint replaces it.
+- 🟡 In-game **Leave Game** in the settings panel (2026-11-03): back to the main menu; a host leaving sends everyone back
 
 ## Milestone 2: Gunplay
 **Weapons**
@@ -42,16 +43,16 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 - 🟡 Body animation in C++: directional walk / crouch, aim pitch, fire / reload / equip actions
 - 🟡 Weapon placed from the head; hands IK'd onto the rifle; pistol hands and fingers from its animations
 - 🟡 Lowered carry when idle, raised on aim / shot / draw (7 s hold); draw animation with the gun revealed in the hand
-- ⬜ Magazine leaves the gun during the third-person reload (hide it while out, or show one in the left hand)
+- ⬜ **Third-person reload holds the magazine:** the old magazine comes out of the gun into the left hand (and goes away), a fresh one is brought in by the left hand and seated. Today the third-person gun keeps its magazine the whole time. Likely approach: hide the gun's magazine bone while it's "out", and attach a separate magazine mesh to the left hand between the pull-out and insert moments (timed like the reload sound notifies), per gun.
 - ⬜ Turn-in-place (feet slide when turning on the spot)
 - ⬜ Male rifle walk set (current rifle walks are female `AS_F_*`); pistol crouch; slower crouch walks
 - ⬜ Downed / dead body animation (see Milestone 3, Downed)
 - ⬜ Small aim correction for the raised pistol (it points where the animation's hand points)
 
 **HUD and feedback**
-- ⬜ **Custom crosshairs:** per-weapon style in the weapon data (dot, cross, circle); spread grows with `GetCurrentInaccuracy()`; hidden while aiming down sights; colour / size / opacity in settings
-- ⬜ Ammo counter (`GetCurrentAmmo()` / `GetReserveAmmo()`), fire mode, reload prompt
-- ⬜ Hit marker (server-confirmed hits only; separate marker and sound for headshots and kills)
+- 🟡 **Custom crosshairs** (2026-11-03): 8 styles (the developer's images), picked in Settings with size and R / G / B sliders, saved per player; hidden while aiming down sights; replaces the template's dot but keeps its interaction hand. ⬜ Later, if wanted: spread that grows with `GetCurrentInaccuracy()`, a default style per weapon, opacity.
+- 🟡 Ammo counter (2026-11-03): magazine / reserve, AUTO / SEMI, RELOADING, red when low. ⬜ Later: a "press R" hint when empty, if wanted.
+- ⬜ **Hit confirmation as an audio cue, no on-screen hit marker** (developer's choice): a short sound for the shooter only when the host confirms the hit, with distinct sounds for headshots and kills
 - ⬜ **Blood splatter** on hits to players and enemies: a Niagara burst at the hit point, blood decals on nearby walls and floor, and a damage sound. Played on every machine from the existing shot multicast. A player setting turns blood down or off.
 - ⬜ **Bullet holes and impact effects by surface:** Physical Materials (concrete, metal, wood, glass, flesh, dirt) on level materials, each picking decal, particles and sound. Candidate decal pack on Fab. Cap decal count and fade them out.
 - ⬜ Damage direction indicator, low-health screen effect

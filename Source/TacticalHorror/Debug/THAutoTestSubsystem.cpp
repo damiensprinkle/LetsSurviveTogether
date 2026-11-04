@@ -69,7 +69,27 @@ TStatId UTHAutoTestSubsystem::GetStatId() const
 void UTHAutoTestSubsystem::Tick(float DeltaTime)
 {
 	APlayerController* PC = GetWorld()->GetFirstPlayerController();
-	APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	if (!PC)
+	{
+		return;
+	}
+
+	// Screenshots and quitting work without a pawn too (e.g. on the main menu)
+	Elapsed += DeltaTime;
+	const float ShotInterval = CVarAutoShotInterval.GetValueOnGameThread();
+	if (ShotInterval > 0.0f && Elapsed >= NextShotTime)
+	{
+		NextShotTime = Elapsed + ShotInterval;
+		FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("AutoShot_%02d.png"), ShotIndex++), true, false);
+	}
+	const float QuitAfter = CVarAutoQuitAfter.GetValueOnGameThread();
+	if (QuitAfter > 0.0f && Elapsed >= QuitAfter)
+	{
+		PC->ConsoleCommand(TEXT("quit"));
+		return;
+	}
+
+	APawn* Pawn = PC->GetPawn();
 	if (!Pawn)
 	{
 		return;
@@ -83,8 +103,6 @@ void UTHAutoTestSubsystem::Tick(float DeltaTime)
 		StrippedSetting = StripSetting;
 		StripComponents(Pawn);
 	}
-
-	Elapsed += DeltaTime;
 
 	TickPreview(PC, DeltaTime);
 
@@ -180,19 +198,6 @@ void UTHAutoTestSubsystem::Tick(float DeltaTime)
 	}
 
 	TickThirdPersonView(PC, Pawn);
-
-	const float ShotInterval = CVarAutoShotInterval.GetValueOnGameThread();
-	if (ShotInterval > 0.0f && Elapsed >= NextShotTime)
-	{
-		NextShotTime = Elapsed + ShotInterval;
-		FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("AutoShot_%02d.png"), ShotIndex++), true, false);
-	}
-
-	const float QuitAfter = CVarAutoQuitAfter.GetValueOnGameThread();
-	if (QuitAfter > 0.0f && Elapsed >= QuitAfter)
-	{
-		PC->ConsoleCommand(TEXT("quit"));
-	}
 }
 
 void UTHAutoTestSubsystem::TickPreview(APlayerController* PC, float DeltaTime)

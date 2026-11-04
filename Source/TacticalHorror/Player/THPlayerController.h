@@ -24,18 +24,40 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UI")
 	bool IsAudioSettingsOpen() const;
 
+	/**
+	 * Settings panel's Leave Game (also a console command): leave the session and go back to the main menu.
+	 * A host leaving ends the game for everyone; their clients go back to their menu.
+	 */
+	UFUNCTION(Exec, BlueprintCallable, Category = "UI")
+	void LeaveGame();
+
 protected:
 	virtual void SetupInputComponent() override;
+	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Replace with a Widget Blueprint subclass to restyle the menu. */
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UTHAudioSettingsWidget> AudioSettingsWidgetClass;
 
+	/** Crosshair shown while holding a weapon (style / size / colour from the settings menu). */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UTHCrosshairWidget> CrosshairWidgetClass;
+
+	/** Ammo readout shown while holding a weapon. */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UTHAmmoWidget> AmmoWidgetClass;
+
 private:
 	void OpenAudioSettings();
 	void CloseAudioSettings();
 
 	UPROPERTY(Transient)
+	TObjectPtr<class UTHAmmoWidget> AmmoWidget;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UTHAudioSettingsWidget> AudioSettingsWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UTHCrosshairWidget> CrosshairWidget;
 };
