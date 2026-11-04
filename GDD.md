@@ -1,6 +1,6 @@
 Tactical Horror FPS --- Game Design & Development Plan
-Document version: 0.3
-Last updated: 2026-10-30
+Document version: 0.4
+Last updated: 2026-11-04
 Status: Early planning / pre-production
 Engine direction: Unreal Engine 5
 Working title: LetsSurviveTogether
@@ -142,6 +142,7 @@ without forcing players to spend excessive time between missions.
 - Night vision goggles.
 - Medical supplies.
 - Additional ammunition.
+- Suppressor (developer's addition, 2026-11-04).
 - Specialized mission equipment.
 Potential distinction between light sources:
 - Flashlight: Natural color and useful local illumination, but can
@@ -204,6 +205,18 @@ basic hostile and one ambush-style enemy.
 
 A sound, distant movement, or brief silhouette in a flashlight beam can
 be more frightening than another combat encounter.
+7.1 Encounter Direction (developer's notes, 2026-11-04)
+- A fairly standard investigative horror game. Some missions may only
+  have a handful of enemies. The agents are prepared, but they are not
+  really expecting what they find.
+- Enemies hit hard and move fast; there will likely never be a lot of
+  them at once.
+- Generally scary: enemies can creep up behind the player, announced
+  only by very subtle audio cues.
+- Difficulty settings are needed, mainly for how hard enemies hit.
+- Many horror players are not used to tactical, skill-based shooting,
+  so the difficulty options and onboarding should make the gunplay
+  approachable without removing it.
 8. Mission Design
 Missions should be built from reusable objective types and data rather
 than mission-specific hardcoded logic.
@@ -258,6 +271,30 @@ revealing a larger mystery.
 
 Do not lock in the organization, mythology, or overarching explanation
 until those concepts have been deliberately designed.
+9.1 Story Direction (developer's notes, 2026-11-04)
+Moved here from the roadmap, in the developer's words. A direction to
+develop, not yet a locked story.
+
+Outline the basic story at this point, thinking basically we are some
+specialist operators, investigates strange incidents across the country.
+some generic examples (not necessarily these)
+- A power plant loses contact with the outside world. Emergency workers
+  sent inside never return.
+- A subway station is evacuated after passengers attack one another.
+- An entire rural village stops communicating with nearby towns.
+- A research facility reports a containment failure, then mysteriously
+  deletes its own records.
+
+We are some incident response team, we basically go to these locations
+with the goal to figure out whats going on, initially the reports assume
+its isolated incidents, eventually discovering everything is connected.
+I have a lot of zombie assets, but we need a unique name for this, will
+also have some other variations, but basically its a zombie. Its possible
+someone could behave normally when infected until the greater host
+decides to trigger them. TO hide the greater organism different beings
+will have different behaviors, some who were recently infected may even
+still speak english. Attacks might appear coordinated (multiple events
+across the country happening at the same time)
 10. Multiplayer Design
 10.1 Established Direction
 - Support 1--4 players.

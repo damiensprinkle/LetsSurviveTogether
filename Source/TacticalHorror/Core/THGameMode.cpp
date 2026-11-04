@@ -4,7 +4,7 @@
 #include "Player/THPlayerController.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
-#include "UObject/ConstructorHelpers.h"
+#include "GameFramework/DefaultPawn.h"
 #include "TacticalHorror.h"
 
 ATHGameMode::ATHGameMode()
@@ -15,13 +15,22 @@ ATHGameMode::ATHGameMode()
 
 	// The horror template's character Blueprint holds the interaction, flashlight and night vision logic.
 	// Reparent it to ATHCharacter in the editor to give it health and weapons.
-	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnClass(TEXT("/Game/Blueprint/Character/BP_FirstPersonCharacter"));
-	if (PlayerPawnClass.Succeeded())
-	{
-		DefaultPawnClass = PlayerPawnClass.Class;
-	}
+	TemplatePawnClass = TSoftClassPtr<APawn>(FSoftObjectPath(TEXT("/Game/Blueprint/Character/BP_FirstPersonCharacter.BP_FirstPersonCharacter_C")));
 
 	bUseSeamlessTravel = true;
+}
+
+void ATHGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+	// A Blueprint game mode that picks its own pawn keeps it
+	if ((!DefaultPawnClass || DefaultPawnClass == ADefaultPawn::StaticClass()) && !TemplatePawnClass.IsNull())
+	{
+		if (UClass* PawnClass = TemplatePawnClass.LoadSynchronous())
+		{
+			DefaultPawnClass = PawnClass;
+		}
+	}
+	Super::InitGame(MapName, Options, ErrorMessage);
 }
 
 void ATHGameMode::NotifyPlayerIncapacitated(AController* Victim)

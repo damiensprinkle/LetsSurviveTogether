@@ -24,7 +24,16 @@ public:
 
 	bool IsFriendlyFireEnabled() const { return bFriendlyFire; }
 
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+
 protected:
+	/**
+	 * Pawn used when no Blueprint game mode sets one: the horror template's character Blueprint (interaction,
+	 * flashlight pickup, night vision). A path, loaded when a game starts, so the editor can move the Blueprint.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Classes")
+	TSoftClassPtr<APawn> TemplatePawnClass;
+
 	/** Whether player weapons can damage other players. Undecided in the GDD; off by default. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Rules")
 	bool bFriendlyFire = false;

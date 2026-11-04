@@ -15,13 +15,11 @@
 ATHHandFlashlight::ATHHandFlashlight()
 {
 	static ConstructorHelpers::FObjectFinder<UTHWeaponData> DefaultData(TEXT("/Game/Weapons/Data/DA_HandFlashlight.DA_HandFlashlight"));
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> DefaultArms(TEXT("/Game/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms.SK_Mannequin_Arms"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> DefaultModel(TEXT("/Game/FPFlashlightAnims/Mesh/SM_Flashlight.SM_Flashlight"));
-	static ConstructorHelpers::FObjectFinder<UAnimSequenceBase> DefaultInspect(TEXT("/Game/FPFlashlightAnims/Animations/AS_Flashlight_Inspection.AS_Flashlight_Inspection"));
 	WeaponData = DefaultData.Object;
-	Mesh->SetSkeletalMeshAsset(DefaultArms.Object);
-	FlashlightMesh = DefaultModel.Object;
-	InspectAnimation = DefaultInspect.Object;
+	// Paths only (loaded when spawned): assets the class default holds can't be moved or renamed in the editor
+	ArmsMesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms.SK_Mannequin_Arms")));
+	FlashlightMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Mesh/SM_Flashlight.SM_Flashlight")));
+	InspectAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Animations/AS_Flashlight_Inspection.AS_Flashlight_Inspection")));
 
 	HeldFlashlight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeldFlashlight"));
 	HeldFlashlight->SetupAttachment(Mesh, HandSocket);
@@ -46,12 +44,22 @@ void ATHHandFlashlight::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	DOREPLIFETIME_CONDITION(ATHHandFlashlight, bLightOn, COND_SkipOwner);
 }
 
+void ATHHandFlashlight::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	if (!Mesh->GetSkeletalMeshAsset())
+	{
+		Mesh->SetSkeletalMeshAsset(ArmsMesh.LoadSynchronous());
+	}
+}
+
 void ATHHandFlashlight::BeginPlay()
 {
 	Super::BeginPlay();
 
-	HeldFlashlight->SetStaticMesh(FlashlightMesh);
-	ThirdPersonFlashlight->SetStaticMesh(FlashlightMesh);
+	UStaticMesh* Model = FlashlightMesh.LoadSynchronous();
+	HeldFlashlight->SetStaticMesh(Model);
+	ThirdPersonFlashlight->SetStaticMesh(Model);
 	Beam->SetIntensity(Intensity);
 	Beam->SetAttenuationRadius(Range);
 	Beam->SetInnerConeAngle(InnerCone);
@@ -156,5 +164,5 @@ void ATHHandFlashlight::ServerSetLightOn_Implementation(bool bOn)
 
 void ATHHandFlashlight::PlayInspect()
 {
-	PlayWeaponAnimation(InspectAnimation);
+	PlayWeaponAnimation(InspectAnimation.LoadSynchronous());
 }

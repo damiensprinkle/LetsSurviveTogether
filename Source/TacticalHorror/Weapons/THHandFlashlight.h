@@ -45,6 +45,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void PostInitializeComponents() override;
 	virtual bool UsesThirdPersonWeaponCopy() const override { return false; }
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -57,8 +58,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<USpotLightComponent> Beam;
 
+	/** First-person arms holding the flashlight (the FP Flashlight Animations pack's). Used when Mesh has none set. */
 	UPROPERTY(EditDefaultsOnly, Category = "Flashlight")
-	TObjectPtr<UStaticMesh> FlashlightMesh;
+	TSoftObjectPtr<USkeletalMesh> ArmsMesh;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flashlight")
+	TSoftObjectPtr<UStaticMesh> FlashlightMesh;
 
 	/** Socket on the first-person arms the model goes in; also its offset from the body's ThirdPersonHandBone. */
 	UPROPERTY(EditDefaultsOnly, Category = "Flashlight")
@@ -76,7 +81,7 @@ protected:
 	FTransform BeamOffset = FTransform(FRotator(0.0f, -90.0f, 0.0f), FVector(0.0f, -7.6f, -0.5f));
 
 	UPROPERTY(EditDefaultsOnly, Category = "Flashlight")
-	TObjectPtr<UAnimSequenceBase> InspectAnimation;
+	TSoftObjectPtr<UAnimSequenceBase> InspectAnimation;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Flashlight|Beam", meta = (ClampMin = 0))
 	float Intensity = 10000.0f;

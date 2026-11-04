@@ -115,7 +115,7 @@ WEAPON_LIGHTS = {
     #       lens offset in the light's frame)
     "DA_M4": (vec(0.0, 4.2, 27.0), None, 1.0, vec(10.5, -0.8, -2.0)),
     # Placed by the developer in the editor (2026-11-04): under the slide; pitch 90, yaw -90, roll 0
-    "DA_G17": (vec(1.5, 0.0, 9.0), unreal.Rotator(roll=0.0, pitch=90.0, yaw=-90.0), 0.8, vec(8.4, -0.6, -1.6)),
+    "DA_G17": (vec(-0.5, 0.0, 10.0), unreal.Rotator(roll=0.0, pitch=90.0, yaw=-90.0), 0.8, vec(8.4, -0.6, -1.6)),
 }
 for name, (location, rotation, scale, lens) in WEAPON_LIGHTS.items():
     gun = load(f"{DATA}/{name}")

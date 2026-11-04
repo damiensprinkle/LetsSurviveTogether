@@ -44,6 +44,30 @@ Source/TacticalHorror/
 
 Planned (not yet created): `Equipment/`, `AI/`, `Missions/` — see TASKS.md. Interaction stays in the template's Blueprint system (`BPI_Interaction`) unless it needs replication.
 
+## Content layout (2026-11-04 cleanup)
+
+Target layout (the pack and template moves are done by hand in the editor; see TASKS.md for status):
+
+```
+Content/
+├── Demo.umap, Maps/          the test map, MainMenu
+├── Characters/               body animation sets (BodyAnimSets), UE mannequin animations we use
+├── Weapons/                  our guns: Data (DA_*), Blueprints, M4_T0, G17, Ammo, magazines
+├── Audio/, Effects/, UI/     ours (footsteps, muzzle flash, crosshairs)
+├── Blueprint/                the FPS horror template's Blueprints (BP_FirstPersonCharacter, game mode, widgets);
+│                             stays here (scripted moves of it crashed the editor)
+├── ThirdParty/<Pack>/        bought / downloaded packs, kept whole: Lyra (from Blueprint/Lyra_Content),
+│                             SampleAnimationPack, FPFlashlightAnims, WeaponsFoleySFX, FreeWeaponSFX, TacticalFlashlight
+├── Template/                 Interaction (doors, pickups, flashlight pickup), LevelPrototyping (Demo's blocks)
+└── _Archive/Animations/      unused animations kept for later, by pack (Lyra, SampleAnimationPack, Mannequins, …)
+```
+
+- New packs go in `ThirdParty/<Pack>`: import there, or after adding from Fab move the folder in the editor (drag it, then right-click the folder → Fix Up Redirectors). Fab updates re-download into the pack's original folder.
+- Move content only inside the editor, never in Windows Explorer, then update hard-coded paths (`grep -r "/Game/"` in Source, Config, Scripts). Scripted moves (`cleanup_reorganize.py`) work for animations and plain assets but crashed the editor on Blueprints and maps; Python has no redirector fix-up (use the editor's, or `-run=ResavePackages -fixupredirects`).
+- C++ refers to content by soft path (loaded at spawn / game start), never with `ConstructorHelpers` on movable content: assets held by a class default can't be moved in the editor.
+- `Scripts/Tools/content_inventory.py` reports what the game uses per folder; `content_verify.py` lists leftover redirectors and missing references (57 missing editor-preview references came broken with the template and packs).
+- Deleted in the cleanup (restore from git history if ever needed): MetaHumans, the UE template's Variant_Horror / FirstPerson / Input, the Fab copies of the M4 / G17 packs, the placeholder Rifle / Pistol / grenade launcher, the G17 importer leftovers, and the two packs' showcase maps.
+
 ## Systems
 
 ### Health — `UTHHealthComponent`
