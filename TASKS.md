@@ -12,6 +12,7 @@ Small, bounded tasks. Each should end with: compiles, tested in PIE (2 players w
    - Movement is CS-style, no sprint: `StandingWalkSpeed` 260 unarmed on the character's movement component, × `MoveSpeedMultiplier` per weapon (pistol 0.94, rifles 0.88). Shift = walk quietly (× 0.52, footsteps at 30% volume). Crouch is slowest and quietest (115 × weapon, 12% volume; `CrouchSpeed` on the Blueprint and `MaxWalkSpeedCrouched` both 115). The template's sprint nodes in `BP_FirstPersonCharacter` are dead code (Shift is taken by C++) and can be deleted.
 3. **Red flashing screen while walking** — fixed. Cause was the Lyra `ABP_Mannequin_Base` on the body (Orientation Warping debug draw in `ABP_ItemAnimLayersBase`); the body now uses the template's `ABP_Manny`. To get Lyra locomotion back, untick *Enable Debug Draw* on the Orientation Warping node and re-test walking.
 4. **Two-player test.** Play settings → Number of Players 2, Net Mode *Play As Listen Server*. Check: both players see each other's weapons, shots hurt only with friendly fire on (`BP_FirstPersonGameMode` → *Friendly Fire*), ammo and switching stay in sync.
+   - **Two-PC test (later, when a second computer is available):** host from the main menu on one, Find Games and Join on the other (same network). Things one PC can't really check: hearing the other player's footsteps (walk / Shift / crouch volumes) and gunshots from a distance and direction, how the other player's body looks while you play normally, and how it feels with real network delay. The main menu hosting and joining, movement and shooting were checked on one PC on 2026-11-04.
 5. **Downed / revive.** Temporarily enable friendly fire, shoot a teammate down, hold **E** on them for 3 s. Down both players → mission restarts after 5 s.
 6. ~~First commit~~ done 2026-11-02 (`218f0e2`). LFS covers .uasset/.umap/.png/.wav/.fbx/.tga/.jpg/.psd. No remote is set up yet.
 
@@ -66,6 +67,9 @@ To check in play: the sliders update the crosshair live, it hides on right-click
 ## Ammo counter and Leave Game (2026-11-03)
 Built: ammo readout bottom right (`30 / 90`, AUTO / SEMI, RELOADING, red when low) and **Leave Game** in the in-game settings panel (back to the main menu). Checked off-screen: the count going 30 → 25 → 11 → red 0 RELOADING under full auto, the panel showing Leave Game, and Leave Game loading the main menu.
 To check in play: the G17 shows no fire mode (it only has one), switching weapons updates the counter, and a client leaving / the host leaving in a two-player game.
+
+Fixed 2026-11-04 (found in play): the counter never appeared, because it hid itself before the gun was equipped and a hidden widget isn't ticked; it now hides only its contents. The template's dot still showed in PIE; the crosshair now hides the dot in every template crosshair in its world, re-checked every second. Checked off-screen on a single player and on a LAN client (`17 / 60` on the G17, `30 / 90 AUTO` on the M4, no dot). Styles T_CH002, 005, 007 and 008 have a dot drawn into the image itself.
+Also fixed 2026-11-04: after hosting or joining from the main menu nothing responded, because the menu's UI-only input mode carried over to the game map. `ATHPlayerController::BeginPlay` now sets game-only input and hides the cursor.
 
 ## Next and later
 The ordered plan and every planned feature (crosshairs, blood, bullet holes, doors, downed / revive, animation cleanup, more guns, menus, Steam, …) are in **ROADMAP.md**, starting with its *Now* list.

@@ -76,11 +76,15 @@ bool UTHCrosshairWidget::ShouldShow() const
 
 void UTHCrosshairWidget::FindTemplateCrosshair()
 {
-	const APlayerController* PC = GetOwningPlayer();
+	// Every template crosshair in this world (the HUD can be made more than once, e.g. on each possession), so no
+	// copy of the dot is missed. Matched by world rather than owning player: in multi-player PIE each instance has its own world.
+	TemplateDots.Reset();
+	TemplateHands.Reset();
+	const UWorld* World = GetWorld();
 	for (TObjectIterator<UUserWidget> It; It; ++It)
 	{
 		UUserWidget* Widget = *It;
-		if (!Widget->GetClass()->GetName().StartsWith(TEXT("WB_Crosshair")) || Widget->GetOwningPlayer() != PC || !Widget->WidgetTree)
+		if (!IsValid(Widget) || Widget->GetWorld() != World || !Widget->WidgetTree || !Widget->GetClass()->GetName().StartsWith(TEXT("WB_Crosshair")))
 		{
 			continue;
 		}
@@ -90,43 +94,57 @@ void UTHCrosshairWidget::FindTemplateCrosshair()
 			{
 				const UObject* Resource = Image->GetBrush().GetResourceObject();
 				const FString Name = Resource ? Resource->GetName() : FString();
-				if (Name.Contains(TEXT("Crosshair_Dot")))
+				if (Name.Contains(TEXT("Dot")))
 				{
-					TemplateDot = Image;
+					TemplateDots.Add(Image);
 				}
 				else if (Name.Contains(TEXT("Cursor")))
 				{
-					TemplateHand = Image;
+					TemplateHands.Add(Image);
 				}
 			}
 		});
-		return;
 	}
 }
 
 bool UTHCrosshairWidget::IsTemplateHandShowing() const
 {
-	const UImage* Hand = TemplateHand.Get();
-	return Hand && Hand->IsVisible() && Hand->GetRenderOpacity() > 0.5f;
+	for (const TWeakObjectPtr<UImage>& Weak : TemplateHands)
+	{
+		const UImage* Hand = Weak.Get();
+		if (Hand && Hand->IsVisible() && Hand->GetRenderOpacity() > 0.5f && Hand->GetCachedWidget().IsValid())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void UTHCrosshairWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// The template HUD is created by the character, possibly after this widget
-	if (!TemplateDot.IsValid())
+	// The template HUD is created by the character, possibly after this widget and possibly again later: look every second
+	TemplateSearchCooldown -= InDeltaTime;
+	if (TemplateSearchCooldown <= 0.0f)
 	{
-		TemplateSearchCooldown -= InDeltaTime;
-		if (TemplateSearchCooldown <= 0.0f)
-		{
-			TemplateSearchCooldown = 1.0f;
-			FindTemplateCrosshair();
-		}
+		TemplateSearchCooldown = 1.0f;
+		FindTemplateCrosshair();
 	}
-	if (UImage* Dot = TemplateDot.Get(); Dot && Dot->GetVisibility() != ESlateVisibility::Hidden)
+	// Opacity as well as visibility, in case the template's own logic shows the dot again
+	for (const TWeakObjectPtr<UImage>& Weak : TemplateDots)
 	{
-		Dot->SetVisibility(ESlateVisibility::Hidden);
+		if (UImage* Dot = Weak.Get())
+		{
+			if (Dot->GetVisibility() != ESlateVisibility::Hidden)
+			{
+				Dot->SetVisibility(ESlateVisibility::Hidden);
+			}
+			if (Dot->GetRenderOpacity() != 0.0f)
+			{
+				Dot->SetRenderOpacity(0.0f);
+			}
+		}
 	}
 
 	if (CrosshairImage)

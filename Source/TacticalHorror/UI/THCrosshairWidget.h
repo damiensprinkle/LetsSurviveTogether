@@ -48,7 +48,7 @@ private:
 	bool IsTemplateHandShowing() const;
 
 	FDelegateHandle ChangedHandle;
-	TWeakObjectPtr<UImage> TemplateDot;
-	TWeakObjectPtr<UImage> TemplateHand;
+	TArray<TWeakObjectPtr<UImage>> TemplateDots;
+	TArray<TWeakObjectPtr<UImage>> TemplateHands;
 	float TemplateSearchCooldown = 0.0f;
 };

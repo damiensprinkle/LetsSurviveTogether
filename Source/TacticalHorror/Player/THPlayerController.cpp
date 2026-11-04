@@ -28,6 +28,10 @@ void ATHPlayerController::BeginPlay()
 	{
 		return;
 	}
+	// The main menu leaves input in UI-only mode with the cursor showing, and that outlives the map change
+	SetInputMode(FInputModeGameOnly());
+	SetShowMouseCursor(false);
+
 	if (CrosshairWidgetClass)
 	{
 		CrosshairWidget = CreateWidget<UTHCrosshairWidget>(this, CrosshairWidgetClass);

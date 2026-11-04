@@ -87,18 +87,20 @@ void UTHAmmoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 	ATHWeaponBase* Weapon = GetShownWeapon();
 	const UTHWeaponData* Data = Weapon ? Weapon->GetWeaponData() : nullptr;
+
+	// Hide the content, not this widget: a hidden widget isn't ticked, so it would never come back
+	if (UWidget* Content = WidgetTree ? WidgetTree->RootWidget : nullptr)
+	{
+		const ESlateVisibility Wanted = Data ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden;
+		if (Content->GetVisibility() != Wanted)
+		{
+			Content->SetVisibility(Wanted);
+		}
+	}
 	if (!Data)
 	{
-		if (GetVisibility() != ESlateVisibility::Hidden)
-		{
-			SetVisibility(ESlateVisibility::Hidden);
-		}
 		ShownWeapon = nullptr;
 		return;
-	}
-	if (GetVisibility() != ESlateVisibility::HitTestInvisible)
-	{
-		SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 
 	const int32 Magazine = Weapon->GetCurrentAmmo();
