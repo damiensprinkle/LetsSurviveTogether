@@ -130,16 +130,8 @@ void UTHAmmoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	}
 	if (FireModeText)
 	{
-		FText Mode = FText::GetEmpty();
-		if (bReloading)
-		{
-			Mode = LOCTEXT("Reloading", "RELOADING");
-		}
-		else if (bCanSwitch)
-		{
-			Mode = Weapon->GetFireMode() == ETHFireMode::FullAuto ? LOCTEXT("Auto", "AUTO") : LOCTEXT("Semi", "SEMI");
-		}
-		FireModeText->SetText(Mode);
+		// No fire-mode label (developer's choice); this line only says RELOADING
+		FireModeText->SetText(bReloading ? LOCTEXT("Reloading", "RELOADING") : FText::GetEmpty());
 	}
 	ReceiveAmmoChanged(Magazine, Reserve, Data->MagazineSize, bReloading);
 }

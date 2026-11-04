@@ -51,7 +51,7 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 
 **HUD and feedback**
 - 🟡 **Custom crosshairs** (2026-11-03): 8 styles (the developer's images), picked in Settings with size and R / G / B sliders, saved per player; hidden while aiming down sights; replaces the template's dot but keeps its interaction hand. ⬜ Later, if wanted: spread that grows with `GetCurrentInaccuracy()`, a default style per weapon, opacity.
-- 🟡 Ammo counter (2026-11-03): magazine / reserve, AUTO / SEMI, RELOADING, red when low. ⬜ Later: a "press R" hint when empty, if wanted.
+- 🟡 Ammo counter (2026-11-03): magazine / reserve, RELOADING, red when low (no fire-mode label: the developer doesn't want fire-mode switching shown). ⬜ Later: a "press R" hint when empty, if wanted.
 - ⬜ **Hit confirmation as an audio cue, no on-screen hit marker** (developer's choice): a short sound for the shooter only when the host confirms the hit, with distinct sounds for headshots and kills
 - ⬜ **Blood splatter** on hits to players and enemies: a Niagara burst at the hit point, blood decals on nearby walls and floor, and a damage sound. Played on every machine from the existing shot multicast. A player setting turns blood down or off.
 - ⬜ **Bullet holes and impact effects by surface:** Physical Materials (concrete, metal, wood, glass, flesh, dirt) on level materials, each picking decal, particles and sound. Candidate decal pack on Fab. Cap decal count and fade them out.
