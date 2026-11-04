@@ -7,6 +7,7 @@
 
 class APawn;
 class UAnimSequenceBase;
+class USoundBase;
 class USkeletalMeshComponent;
 class UTHWeaponData;
 
@@ -33,10 +34,18 @@ public:
 	virtual void OnUnequipped();
 
 	/** Local input from the owning player. */
-	void StartFire();
-	void StopFire();
-	void StartReload();
+	virtual void StartFire();
+	virtual void StopFire();
+	virtual void StartReload();
 	void CycleFireMode();
+
+	/** False for held items that aren't guns (the hand flashlight): no ammo readout, crosshair or aiming down sights. */
+	virtual bool IsFirearm() const { return true; }
+
+	/** Whether this weapon has an under-barrel light (its data has a mesh for it). */
+	bool HasWeaponLight() const;
+
+	USoundBase* GetLightClickSound() const;
 
 	/** Blocks firing without unequipping, e.g. while downed. */
 	void SetFiringBlocked(bool bBlocked);
@@ -119,10 +128,54 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon|Network", meta = (Units = "cm"))
 	float MaxOriginError = 150.0f;
 
-private:
+	/** Under-barrel light on the first-person gun (owner only) and on the third-person copy (everyone else). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UStaticMeshComponent> WeaponLightMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UStaticMeshComponent> ThirdPersonWeaponLightMesh;
+
+	/** One beam per machine, on whichever copy this machine sees. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class USpotLightComponent> WeaponLightBeam;
+
+	/** The new magazine in the body's left hand during a third-person reload (everyone but the owner). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UStaticMeshComponent> HeldMagazine;
+
+	/** Plays on the first-person mesh, then returns to the idle loop. */
+	void PlayWeaponAnimation(UAnimSequenceBase* Animation);
+
 	APawn* GetOwningPawn() const;
 	bool IsLocallyControlledOwner() const;
+
+	/** The copy this machine shows: first person for the owner, third person for everyone else. */
+	USkeletalMeshComponent* GetVisibleMesh() const;
+
+	/** False: no third-person copy of Mesh in the body's hand (an item that shows something else for others). */
+	virtual bool UsesThirdPersonWeaponCopy() const { return true; }
+
+	bool IsEquipped() const { return bIsEquipped; }
+
+	/** True while the body's draw animation hasn't yet brought the hand up (the third-person item stays hidden). */
+	bool IsThirdPersonHiddenForDraw() const;
+
+private:
 	bool IsAimingDownSights() const;
+
+	void SetupWeaponLight();
+	void UpdateWeaponLight();
+
+	/** Third-person reload: magazine out of the gun and dropped, new one in the left hand, then seated. */
+	void UpdateThirdPersonMagazine();
+	void ResetThirdPersonMagazine();
+
+	double ReloadStartTime = 0.0;
+	bool bMagazineDropped = false;
+	bool bMagazineBoneHidden = false;
+	/** The body's left-hand finger bones, for its palm. */
+	TArray<FName> BodyLeftFingers[5];
+	TWeakObjectPtr<const USkeletalMesh> BodyLeftFingersMesh;
 
 	void UpdateFirstPersonRendering();
 	void HandleFiring();
@@ -143,7 +196,6 @@ private:
 	void UpdateViewRecovery(float DeltaSeconds);
 
 	FTransform GetMuzzleTransform() const;
-	void PlayWeaponAnimation(UAnimSequenceBase* Animation);
 
 	void SetupThirdPersonMesh();
 	void AttachThirdPersonMesh();
@@ -151,9 +203,6 @@ private:
 
 	/** Direction cosmetics use (third-person weapon, muzzle flash, casings). */
 	static FRotator GetPresentationAim(const APawn* Pawn);
-
-	/** The copy this machine shows: first person for the owner, third person for everyone else. */
-	USkeletalMeshComponent* GetVisibleMesh() const;
 
 	/** Upper-body animation on the owner's body, from the weapon data's BodyAnimSet. */
 	void PlayBodyAction(class UAnimSequence* Animation, float Duration, float BlendIn, float BlendOut);
@@ -243,6 +292,9 @@ private:
 	/** The body's right-hand finger bones, for placing the weapon in that hand. */
 	TArray<FName> ThirdPersonBodyFingers[5];
 	TWeakObjectPtr<const USkeletalMesh> ThirdPersonBodyFingersMesh;
+
+	/** The skeletal mesh the weapon light's beam is attached to (the copy this machine sees). */
+	TWeakObjectPtr<USceneComponent> WeaponLightBeamParent;
 
 	/** This weapon's casings still in the world, oldest first, so the count can be capped. */
 	TArray<TWeakObjectPtr<class ATHShellCasing>> ShellCasings;

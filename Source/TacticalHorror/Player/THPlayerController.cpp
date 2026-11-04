@@ -63,6 +63,22 @@ void ATHPlayerController::LeaveGame()
 	UGameplayStatics::OpenLevel(this, FName(*FPackageName::ObjectPathToPackageName(MenuMap)));
 }
 
+void ATHPlayerController::GiveFlashlight()
+{
+	if (UTHWeaponComponent* Weapons = GetPawn() ? GetPawn()->FindComponentByClass<UTHWeaponComponent>() : nullptr)
+	{
+		Weapons->GiveHandFlashlight(true);
+	}
+}
+
+void ATHPlayerController::WeaponLight()
+{
+	if (UTHWeaponComponent* Weapons = GetPawn() ? GetPawn()->FindComponentByClass<UTHWeaponComponent>() : nullptr)
+	{
+		Weapons->ToggleWeaponLight();
+	}
+}
+
 void ATHPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();

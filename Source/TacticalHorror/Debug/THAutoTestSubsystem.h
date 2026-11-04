@@ -39,4 +39,5 @@ private:
 	TWeakObjectPtr<APawn> StrippedPawn;
 	TWeakObjectPtr<APawn> EquippedPawn;
 	FString StrippedSetting;
+	TSet<int32> RanCommands;
 };

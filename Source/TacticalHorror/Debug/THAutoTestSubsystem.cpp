@@ -53,6 +53,10 @@ static TAutoConsoleVariable<float> CVarAutoReloadAfter(
 	TEXT("th.AutoReloadAfter"), 0.0f, TEXT("Reload the held weapon once, this many seconds in (0 = off)."));
 static TAutoConsoleVariable<float> CVarAutoSwitchAfter(
 	TEXT("th.AutoSwitchAfter"), 0.0f, TEXT("Switch to the other weapon once, this many seconds in (0 = off)."));
+static TAutoConsoleVariable<FString> CVarAutoCommands(
+	TEXT("th.AutoCommands"), TEXT(""),
+	TEXT("Console commands run once at set times after the pawn exists: \"seconds=command|seconds=command\", '+' for spaces, ")
+	TEXT("e.g. \"3=WeaponLight|6=th.ThirdPerson+1\"."));
 static TAutoConsoleVariable<FString> CVarStripComponents(
 	TEXT("th.StripComponents"), TEXT(""), TEXT("Comma-separated name fragments; matching components are destroyed on the local pawn. For bisecting Blueprint issues."));
 
@@ -105,6 +109,18 @@ void UTHAutoTestSubsystem::Tick(float DeltaTime)
 	}
 
 	TickPreview(PC, DeltaTime);
+
+	TArray<FString> Commands;
+	CVarAutoCommands.GetValueOnGameThread().ParseIntoArray(Commands, TEXT("|"));
+	for (int32 Index = 0; Index < Commands.Num(); ++Index)
+	{
+		FString Time, Command;
+		if (Commands[Index].Split(TEXT("="), &Time, &Command) && !RanCommands.Contains(Index) && Elapsed >= FCString::Atof(*Time))
+		{
+			RanCommands.Add(Index);
+			PC->ConsoleCommand(Command.Replace(TEXT("+"), TEXT(" ")));
+		}
+	}
 
 	const int32 EquipSlot = CVarAutoEquip.GetValueOnGameThread();
 	if (EquipSlot >= 0 && EquippedPawn != Pawn)

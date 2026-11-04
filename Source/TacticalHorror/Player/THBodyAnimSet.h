@@ -122,6 +122,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions", meta = (ClampMin = 0, Units = "s"))
 	float ActionBlendTime = 0.15f;
 
+	/**
+	 * How long the end of the reload hands the hands back to the weapon (hand IK). The reload animation's own end pose
+	 * holds a differently placed gun, so a longer hand-back glides the left hand onto the grip instead of showing that pose.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Actions", meta = (ClampMin = 0, Units = "s"))
+	float ReloadBlendOutTime = 1.0f;
+
 	// Hand IK: puts both hands where the weapon holds them (the weapon data's Third Person section places the weapon
 	// from the head). Fades out while a full-pose action (reload, equip) plays; the weapon then follows the right hand.
 

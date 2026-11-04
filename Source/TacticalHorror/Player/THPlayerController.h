@@ -31,6 +31,14 @@ public:
 	UFUNCTION(Exec, BlueprintCallable, Category = "UI")
 	void LeaveGame();
 
+	/** Console: give this player the hand flashlight and take it out with the inspect, as picking one up does (for testing). */
+	UFUNCTION(Exec)
+	void GiveFlashlight();
+
+	/** Console: switch the weapon light (as L). */
+	UFUNCTION(Exec)
+	void WeaponLight();
+
 protected:
 	virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;

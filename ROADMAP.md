@@ -37,13 +37,13 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 - 🟡 Server-validated firing and damage; fire rate capped for clicking too (fixed 2026-11-03)
 - 🟡 Shell casings with collision, bounce sounds, metal material
 - 🟡 Muzzle flash (light and quads, player setting for brightness)
-- ⬜ Tune the M4 recoil pattern in a test range (grid wall, spray 30, compare)
+- 🟡 M4 spray pattern set to CS2's M4A4 (2026-11-04) from the developer's measured bullet positions (`Scripts/Tools/set_m4_spray.py`). ⬜ Check it on a grid wall (spray 30 without compensating), and decide how much of it moves the camera (`ViewKickFraction`, now 0.5)
 
 **Third person (what other players see)**
 - 🟡 Body animation in C++: directional walk / crouch, aim pitch, fire / reload / equip actions
 - 🟡 Weapon placed from the head; hands IK'd onto the rifle; pistol hands and fingers from its animations
 - 🟡 Lowered carry when idle, raised on aim / shot / draw (7 s hold); draw animation with the gun revealed in the hand
-- ⬜ **Third-person reload holds the magazine:** the old magazine comes out of the gun into the left hand (and goes away), a fresh one is brought in by the left hand and seated. Today the third-person gun keeps its magazine the whole time. Likely approach: hide the gun's magazine bone while it's "out", and attach a separate magazine mesh to the left hand between the pull-out and insert moments (timed like the reload sound notifies), per gun.
+- 🟡 **Third-person reload magazine** (2026-11-04): the old magazine drops out of the gun and falls to the floor (physics, removed after 30 s), a fresh one appears in the left hand at the waist and is seated. Magazine meshes cut from each gun's rig (`setup_magazines.py`); timing per gun on the weapon data. ⬜ A magazine-drop sound (`MagazineDropSound`), ⬜ maybe the first-person view drops one too.
 - ⬜ Turn-in-place (feet slide when turning on the spot)
 - ⬜ Male rifle walk set (current rifle walks are female `AS_F_*`); pistol crouch; slower crouch walks
 - ⬜ Downed / dead body animation (see Milestone 3, Downed)
@@ -75,7 +75,8 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - ⬜ Decide how `setup_body_anims.py` stays the source of truth versus hand-edited assets (it overwrites values; today the developer's numbers are copied into its tables).
 
 ## Milestone 3: Equipment and Atmosphere
-- 🔧 Flashlight, night vision, interaction, doors, pickups: template versions work single-player; **replication not verified**. Convert what breaks into replicated components.
+- 🟡 **Flashlights** (2026-11-04): the hand flashlight (found in the first mission, then key 3, bright, inspected on pickup, left mouse on / off) and the weapon light (upgrade, under the barrel, dimmer, L). Both replicated; the template's L flashlight is replaced. ⬜ Unlock the weapon light from a mission reward once missions exist; ⬜ gloved first-person arms for the flashlight to match the guns; ⬜ maybe a battery.
+- 🔧 Night vision, interaction, doors, pickups: template versions work single-player; **replication not verified**. Convert what breaks into replicated components.
 - ⬜ **Doors:** server-authoritative open / close, replicated state, sound, can't close on a player; open speed / push direction; locked / keyed variants for missions. Optional third-person hand reach when opening (an additive arm animation).
 - 🔧 **Downed and revive.** Built in code, not yet play-tested: at 0 health a player goes down and bleeds out after 30 s; holding **E** for 3 s on them revives at 30% health; when everyone is down the mission restarts. Still to do:
   - ❓ Rules: bleed-out time, whether enemies can finish downed players, whether a downed player can crawl or shoot a pistol, how many downs before death

@@ -76,7 +76,46 @@ public:
 
 	UTHBodyAnimSet* GetUnarmedBodyAnimSet() const { return UnarmedBodyAnimSet; }
 
+	// Weapon light (L): an under-barrel light on guns whose data has one. An upgrade: off until unlocked.
+
+	UFUNCTION(BlueprintPure, Category = "Weapons|Light")
+	bool IsWeaponLightUnlocked() const { return bWeaponLightUnlocked; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapons|Light")
+	bool IsWeaponLightOn() const { return bWeaponLightUnlocked && bWeaponLightOn; }
+
+	/** Server only. E.g. a mission reward. */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Weapons|Light")
+	void UnlockWeaponLight();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapons|Light")
+	void ToggleWeaponLight();
+
+	// Hand flashlight (3): a held item, given when the player picks up a flashlight
+
+	UFUNCTION(BlueprintPure, Category = "Weapons|Flashlight")
+	bool HasHandFlashlight() const;
+
+	/** Gives the hand flashlight (server; from the owning client it asks the server). bInspect: take it out and look it over. */
+	UFUNCTION(BlueprintCallable, Category = "Weapons|Flashlight")
+	void GiveHandFlashlight(bool bInspect);
+
 protected:
+	/** Held item given by GiveHandFlashlight. It goes in the next free slot (the third, key 3, after the two guns). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapons|Flashlight")
+	TSubclassOf<ATHWeaponBase> HandFlashlightClass;
+
+	/**
+	 * Bool on the owner (the template character's PickupFlashLight) that turns true when it picks up a flashlight.
+	 * Watched on the owning client; when it flips, the hand flashlight is given and inspected. None = not watched.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Weapons|Flashlight")
+	FName FlashlightPickupFlag = TEXT("PickupFlashLight");
+
+	/** Start with the weapon light unlocked. Off once missions can award it. */
+	UPROPERTY(EditAnywhere, Category = "Weapons|Light")
+	bool bStartWithWeaponLight = true;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -117,6 +156,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	TObjectPtr<UInputAction> CycleFireModeAction;
 
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> WeaponLightAction;
+
 	/** Index N equips weapon N. */
 	UPROPERTY(EditAnywhere, Category = "Input")
 	TArray<TObjectPtr<UInputAction>> EquipSlotActions;
@@ -147,6 +189,25 @@ private:
 
 	UFUNCTION(Server, Reliable)
 	void ServerSetAiming(bool bNewAiming);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetWeaponLightOn(bool bOn);
+
+	UFUNCTION(Server, Reliable)
+	void ServerGiveHandFlashlight(bool bEquip);
+
+	/** Watches FlashlightPickupFlag on the owning client. */
+	void CheckFlashlightPickup();
+
+	UPROPERTY(Replicated)
+	bool bWeaponLightUnlocked = false;
+
+	UPROPERTY(Replicated)
+	bool bWeaponLightOn = false;
+
+	/** Owning client: inspect the hand flashlight when it next becomes the held item. */
+	bool bInspectFlashlightOnEquip = false;
+	bool bRequestedHandFlashlight = false;
 
 	UFUNCTION()
 	void OnRep_CurrentWeapon(ATHWeaponBase* OldWeapon);

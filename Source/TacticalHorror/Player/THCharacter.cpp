@@ -153,6 +153,18 @@ void ATHCharacter::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdj
 	}
 }
 
+void ATHCharacter::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+
+	// The Blueprint's key events are bound just above. The template's L flashlight is replaced by the weapon light
+	// (UTHWeaponComponent) and the hand flashlight (key 3), so drop its L binding.
+	if (InputComponent)
+	{
+		InputComponent->KeyBindings.RemoveAll([](const FInputKeyBinding& Binding) { return Binding.Chord.Key == EKeys::L; });
+	}
+}
+
 void ATHCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);

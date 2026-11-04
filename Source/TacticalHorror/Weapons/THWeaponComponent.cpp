@@ -1,6 +1,7 @@
 #include "Weapons/THWeaponComponent.h"
 #include "Weapons/THWeaponBase.h"
 #include "Weapons/THWeaponData.h"
+#include "Weapons/THHandFlashlight.h"
 #include "Player/THBodyAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -14,12 +15,127 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Net/UnrealNetwork.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 UTHWeaponComponent::UTHWeaponComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	SetIsReplicatedByDefault(true);
 	BodyAnimClass = UTHBodyAnimInstance::StaticClass();
+	HandFlashlightClass = ATHHandFlashlight::StaticClass();
+}
+
+// Weapon light
+
+void UTHWeaponComponent::UnlockWeaponLight()
+{
+	if (GetOwner()->HasAuthority())
+	{
+		bWeaponLightUnlocked = true;
+	}
+}
+
+void UTHWeaponComponent::ToggleWeaponLight()
+{
+	if (!bWeaponLightUnlocked || !CurrentWeapon || !CurrentWeapon->HasWeaponLight())
+	{
+		return;
+	}
+	// Locally right away; the server's copy replicates to everyone else
+	bWeaponLightOn = !bWeaponLightOn;
+	if (!GetOwner()->HasAuthority())
+	{
+		ServerSetWeaponLightOn(bWeaponLightOn);
+	}
+	if (USoundBase* Click = CurrentWeapon->GetLightClickSound())
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, Click, CurrentWeapon->GetActorLocation(), 0.6f);
+	}
+}
+
+void UTHWeaponComponent::ServerSetWeaponLightOn_Implementation(bool bOn)
+{
+	bWeaponLightOn = bOn;
+}
+
+// Hand flashlight
+
+bool UTHWeaponComponent::HasHandFlashlight() const
+{
+	return Weapons.ContainsByPredicate([](const ATHWeaponBase* Weapon) { return Weapon && !Weapon->IsFirearm(); });
+}
+
+void UTHWeaponComponent::GiveHandFlashlight(bool bInspect)
+{
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+	if (Pawn && Pawn->IsLocallyControlled())
+	{
+		bInspectFlashlightOnEquip = bInspect;
+	}
+	if (GetOwner()->HasAuthority())
+	{
+		ServerGiveHandFlashlight_Implementation(bInspect);
+	}
+	else
+	{
+		ServerGiveHandFlashlight(bInspect);
+	}
+}
+
+void UTHWeaponComponent::ServerGiveHandFlashlight_Implementation(bool bEquip)
+{
+	APawn* Pawn = Cast<APawn>(GetOwner());
+	if (!Pawn || !HandFlashlightClass)
+	{
+		return;
+	}
+
+	ATHWeaponBase* Flashlight = nullptr;
+	for (ATHWeaponBase* Weapon : Weapons)
+	{
+		if (Weapon && Weapon->IsA(HandFlashlightClass))
+		{
+			Flashlight = Weapon;
+		}
+	}
+	if (!Flashlight)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Owner = Pawn;
+		SpawnParams.Instigator = Pawn;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Flashlight = GetWorld()->SpawnActor<ATHWeaponBase>(HandFlashlightClass, Pawn->GetActorTransform(), SpawnParams);
+		if (!Flashlight)
+		{
+			return;
+		}
+		Weapons.Add(Flashlight);
+	}
+	if (bEquip && !bWeaponsBlocked)
+	{
+		SetCurrentWeapon(Flashlight);
+	}
+}
+
+void UTHWeaponComponent::CheckFlashlightPickup()
+{
+	if (bRequestedHandFlashlight || FlashlightPickupFlag.IsNone())
+	{
+		return;
+	}
+	const AActor* Owner = GetOwner();
+	const FBoolProperty* Flag = FindFProperty<FBoolProperty>(Owner->GetClass(), FlashlightPickupFlag);
+	if (!Flag)
+	{
+		bRequestedHandFlashlight = true;	// nothing to watch on this character
+		return;
+	}
+	if (Flag->GetPropertyValue_InContainer(Owner) && !HasHandFlashlight())
+	{
+		bRequestedHandFlashlight = true;
+		GiveHandFlashlight(true);
+	}
 }
 
 USkeletalMeshComponent* UTHWeaponComponent::GetBodyMesh() const
@@ -64,6 +180,8 @@ void UTHWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(UTHWeaponComponent, Weapons);
 	DOREPLIFETIME(UTHWeaponComponent, CurrentWeapon);
 	DOREPLIFETIME_CONDITION(UTHWeaponComponent, bIsAiming, COND_SkipOwner);
+	DOREPLIFETIME(UTHWeaponComponent, bWeaponLightUnlocked);
+	DOREPLIFETIME_CONDITION(UTHWeaponComponent, bWeaponLightOn, COND_SkipOwner);
 }
 
 void UTHWeaponComponent::BeginPlay()
@@ -84,6 +202,7 @@ void UTHWeaponComponent::BeginPlay()
 	{
 		return;
 	}
+	bWeaponLightUnlocked = bStartWithWeaponLight;
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = Pawn;
@@ -167,6 +286,10 @@ void UTHWeaponComponent::SetupPlayerInput(UEnhancedInputComponent* InputComponen
 	{
 		InputComponent->BindAction(CycleFireModeAction, ETriggerEvent::Started, this, &UTHWeaponComponent::OnCycleFireMode);
 	}
+	if (WeaponLightAction)
+	{
+		InputComponent->BindAction(WeaponLightAction, ETriggerEvent::Started, this, &UTHWeaponComponent::ToggleWeaponLight);
+	}
 	for (int32 Index = 0; Index < EquipSlotActions.Num(); ++Index)
 	{
 		if (EquipSlotActions[Index])
@@ -195,6 +318,9 @@ void UTHWeaponComponent::BuildDefaultInput()
 	MakeAction(NextWeaponAction, TEXT("IA_NextWeapon"), EKeys::MouseScrollDown);
 	MakeAction(PreviousWeaponAction, TEXT("IA_PreviousWeapon"), EKeys::MouseScrollUp);
 	MakeAction(CycleFireModeAction, TEXT("IA_CycleFireMode"), EKeys::B);
+	// Consumed, so the template character's own L flashlight doesn't also react
+	MakeAction(WeaponLightAction, TEXT("IA_WeaponLight"), EKeys::L);
+	WeaponLightAction->bConsumeInput = true;
 
 	const FKey SlotKeys[] = { EKeys::One, EKeys::Two, EKeys::Three };
 	EquipSlotActions.SetNum(UE_ARRAY_COUNT(SlotKeys));
@@ -347,6 +473,21 @@ void UTHWeaponComponent::OnRep_CurrentWeapon(ATHWeaponBase* OldWeapon)
 	{
 		CurrentWeapon->OnEquipped();
 		CurrentWeapon->SetFiringBlocked(bWeaponsBlocked);
+
+		// A flashlight just picked up comes out and is looked over
+		if (bInspectFlashlightOnEquip && !CurrentWeapon->IsFirearm())
+		{
+			bInspectFlashlightOnEquip = false;
+			if (ATHHandFlashlight* Flashlight = Cast<ATHHandFlashlight>(CurrentWeapon))
+			{
+				Flashlight->PlayInspect();
+			}
+		}
+		// Aiming belongs to guns
+		if (!CurrentWeapon->IsFirearm())
+		{
+			SetAiming(false);
+		}
 	}
 
 	OnWeaponChanged.Broadcast(CurrentWeapon, OldWeapon);
@@ -370,7 +511,7 @@ void UTHWeaponComponent::SetWeaponsBlocked(bool bBlocked)
 
 void UTHWeaponComponent::SetAiming(bool bNewAiming)
 {
-	if (bNewAiming && (bWeaponsBlocked || !CurrentWeapon))
+	if (bNewAiming && (bWeaponsBlocked || !CurrentWeapon || !CurrentWeapon->IsFirearm()))
 	{
 		return;
 	}
@@ -414,6 +555,7 @@ void UTHWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	if (Pawn && Pawn->IsLocallyControlled())
 	{
 		UpdateAimFieldOfView(DeltaTime);
+		CheckFlashlightPickup();
 	}
 }
 

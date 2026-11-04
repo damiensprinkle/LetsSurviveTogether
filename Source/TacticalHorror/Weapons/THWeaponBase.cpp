@@ -2,6 +2,7 @@
 #include "Weapons/THWeaponData.h"
 #include "Weapons/THWeaponComponent.h"
 #include "Weapons/THShellCasing.h"
+#include "Weapons/THDroppedMagazine.h"
 #include "Player/THBodyAnimInstance.h"
 #include "Player/THBodyAnimSet.h"
 #include "Settings/THAudioSettingsSubsystem.h"
@@ -14,6 +15,7 @@
 #include "Components/AudioComponent.h"
 #include "Components/DecalComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -41,6 +43,10 @@ static TAutoConsoleVariable<FString> CVarThirdPersonTune(
 	TEXT("Live tuning of the held weapon's third-person hold, added to its data asset values (copy the result into the asset): ")
 	TEXT("\"anchorX anchorY anchorZ  rightX rightY rightZ  rightPitch rightYaw rightRoll  leftX leftY leftZ  leftPitch leftYaw leftRoll  ")
 	TEXT("rightShoulderX rightShoulderY rightShoulderZ  leftShoulderX leftShoulderY leftShoulderZ\". Missing values = 0."));
+static TAutoConsoleVariable<FString> CVarWeaponLightTune(
+	TEXT("th.WeaponLightTune"), TEXT(""),
+	TEXT("Live tuning of the held weapon's under-barrel light, added to its data asset's Weapon Light Attach (copy the result into the asset): ")
+	TEXT("\"x y z  pitch yaw roll\" in the muzzle bone's space. Missing values = 0."));
 #include "TacticalHorror.h"
 
 namespace
@@ -123,6 +129,217 @@ ATHWeaponBase::ATHWeaponBase()
 		Quad->SetVisibility(false);
 		MuzzleFlashQuads.Add(Quad);
 	}
+
+	WeaponLightMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponLightMesh"));
+	WeaponLightMesh->SetupAttachment(Mesh);
+	WeaponLightMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	WeaponLightMesh->SetCastShadow(false);
+	WeaponLightMesh->SetOnlyOwnerSee(true);
+	WeaponLightMesh->SetVisibility(false);
+
+	ThirdPersonWeaponLightMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ThirdPersonWeaponLightMesh"));
+	ThirdPersonWeaponLightMesh->SetupAttachment(ThirdPersonMesh);
+	ThirdPersonWeaponLightMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	ThirdPersonWeaponLightMesh->SetOwnerNoSee(true);
+	ThirdPersonWeaponLightMesh->SetVisibility(false);
+
+	WeaponLightBeam = CreateDefaultSubobject<USpotLightComponent>(TEXT("WeaponLightBeam"));
+	WeaponLightBeam->SetupAttachment(Mesh);
+	WeaponLightBeam->SetIntensityUnits(ELightUnits::Unitless);
+	WeaponLightBeam->SetVisibility(false);
+
+	HeldMagazine = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeldMagazine"));
+	HeldMagazine->SetupAttachment(Mesh);
+	HeldMagazine->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeldMagazine->SetOwnerNoSee(true);
+	HeldMagazine->SetHiddenInGame(true);
+	HeldMagazine->SetUsingAbsoluteLocation(true);
+	HeldMagazine->SetUsingAbsoluteRotation(true);
+	HeldMagazine->SetUsingAbsoluteScale(true);
+}
+
+void ATHWeaponBase::ResetThirdPersonMagazine()
+{
+	if (bMagazineBoneHidden && WeaponData)
+	{
+		ThirdPersonMesh->UnHideBoneByName(WeaponData->ThirdPersonMagazineBone);
+	}
+	bMagazineBoneHidden = false;
+	bMagazineDropped = false;
+	ReloadStartTime = 0.0;
+	HeldMagazine->SetHiddenInGame(true);
+}
+
+void ATHWeaponBase::UpdateThirdPersonMagazine()
+{
+	if (!WeaponData || WeaponData->ThirdPersonMagazineBone.IsNone() || !UsesThirdPersonWeaponCopy())
+	{
+		return;
+	}
+	if (!bIsReloading || !bIsEquipped || ReloadStartTime <= 0.0)
+	{
+		if (ReloadStartTime > 0.0 || bMagazineBoneHidden)
+		{
+			ResetThirdPersonMagazine();
+		}
+		return;
+	}
+
+	const FName Bone = WeaponData->ThirdPersonMagazineBone;
+	const float Phase = (GetWorld()->GetTimeSeconds() - ReloadStartTime) / FMath::Max(WeaponData->ReloadDuration, 0.01f);
+
+	// Out of the gun and onto the floor
+	if (!bMagazineDropped && Phase >= WeaponData->MagazineDropAt)
+	{
+		bMagazineDropped = true;
+		const FTransform Dropped = ThirdPersonMesh->GetSocketTransform(Bone);
+		ThirdPersonMesh->HideBoneByName(Bone, PBO_None);
+		bMagazineBoneHidden = true;
+
+		if (WeaponData->ThirdPersonMagazineMesh && ThirdPersonBody.IsValid() && !ThirdPersonMesh->bHiddenInGame)
+		{
+			FActorSpawnParameters Params;
+			Params.Owner = this;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			// The dropped actor is centred on the mesh's middle (its physics box), so start it where that middle is now
+			const FVector Centre = Dropped.TransformPosition(WeaponData->ThirdPersonMagazineMesh->GetBounds().Origin);
+			if (ATHDroppedMagazine* Magazine = GetWorld()->SpawnActor<ATHDroppedMagazine>(Centre, Dropped.Rotator(), Params))
+			{
+				Magazine->SetActorScale3D(Dropped.GetScale3D());
+				const APawn* Pawn = GetOwningPawn();
+				const FVector Velocity = (Pawn ? Pawn->GetVelocity() : FVector::ZeroVector) + FVector(0.0f, 0.0f, -60.0f);
+				Magazine->Drop(WeaponData->ThirdPersonMagazineMesh, Velocity, WeaponData->DroppedMagazineLifetime, WeaponData->MagazineDropSound);
+			}
+		}
+	}
+
+	// The new one in the left hand from the waist until it is seated
+	bool bHolding = false;
+	USkeletalMeshComponent* Body = ThirdPersonBody.Get();
+	const UTHBodyAnimSet* BodySet = WeaponData->BodyAnimSet;
+	if (Body && BodySet && WeaponData->ThirdPersonMagazineMesh && Phase >= WeaponData->MagazineGrabAt && Phase < WeaponData->MagazineSeatAt)
+	{
+		const USkeletalMesh* BodyMesh = Body->GetSkeletalMeshAsset();
+		if (BodyMesh && BodyLeftFingersMesh.Get() != BodyMesh)
+		{
+			BodyLeftFingersMesh = BodyMesh;
+			FTHHandShape::FindFingers(BodyMesh->GetRefSkeleton(), BodySet->LeftHandBone, BodyLeftFingers);
+		}
+		if (BodyLeftFingers[1].Num() && BodyLeftFingers[2].Num() && BodyLeftFingers[4].Num())
+		{
+			const FVector W = Body->GetSocketLocation(BodySet->LeftHandBone);
+			const FVector I = Body->GetSocketLocation(BodyLeftFingers[1][0]);
+			const FVector M = Body->GetSocketLocation(BodyLeftFingers[2][0]);
+			const FVector P = Body->GetSocketLocation(BodyLeftFingers[4][0]);
+			const FTransform Palm(FTHHandShape::MakeFrame(W, I, M, P), FTHHandShape::MakePalm(W, I, M, P), ThirdPersonMesh->GetComponentScale());
+			if (HeldMagazine->GetStaticMesh() != WeaponData->ThirdPersonMagazineMesh)
+			{
+				HeldMagazine->SetStaticMesh(WeaponData->ThirdPersonMagazineMesh);
+			}
+			// The rig's magazine bones carry a scale, which the magazine mesh was modelled against: keep it
+			HeldMagazine->SetWorldTransform(WeaponData->ThirdPersonMagazineInPalm * Palm);
+			bHolding = !ThirdPersonMesh->bHiddenInGame;
+		}
+	}
+	HeldMagazine->SetHiddenInGame(!bHolding);
+
+	// Seated: the gun's own magazine is back
+	if (bMagazineBoneHidden && Phase >= WeaponData->MagazineSeatAt)
+	{
+		ThirdPersonMesh->UnHideBoneByName(Bone);
+		bMagazineBoneHidden = false;
+	}
+}
+
+bool ATHWeaponBase::HasWeaponLight() const
+{
+	return WeaponData && WeaponData->WeaponLightMesh;
+}
+
+bool ATHWeaponBase::IsThirdPersonHiddenForDraw() const
+{
+	return ThirdPersonRevealTime > GetWorld()->GetTimeSeconds();
+}
+
+USoundBase* ATHWeaponBase::GetLightClickSound() const
+{
+	return WeaponData ? WeaponData->WeaponLightClickSound.Get() : nullptr;
+}
+
+void ATHWeaponBase::SetupWeaponLight()
+{
+	if (!HasWeaponLight())
+	{
+		return;
+	}
+	WeaponLightMesh->SetStaticMesh(WeaponData->WeaponLightMesh);
+	ThirdPersonWeaponLightMesh->SetStaticMesh(WeaponData->WeaponLightMesh);
+	WeaponLightBeam->SetIntensity(WeaponData->WeaponLightIntensity);
+	WeaponLightBeam->SetAttenuationRadius(WeaponData->WeaponLightRange);
+	WeaponLightBeam->SetInnerConeAngle(WeaponData->WeaponLightInnerCone);
+	WeaponLightBeam->SetOuterConeAngle(WeaponData->WeaponLightOuterCone);
+	WeaponLightBeam->SetLightColor(WeaponData->WeaponLightColor);
+}
+
+void ATHWeaponBase::UpdateWeaponLight()
+{
+	if (!HasWeaponLight())
+	{
+		return;
+	}
+
+	const APawn* Pawn = GetOwningPawn();
+	const UTHWeaponComponent* Weapons = Pawn ? Pawn->FindComponentByClass<UTHWeaponComponent>() : nullptr;
+	const bool bFitted = bIsEquipped && Weapons && Weapons->IsWeaponLightUnlocked();
+	const bool bOn = bFitted && Weapons->IsWeaponLightOn();
+
+	// The data's attach frame plus th.WeaponLightTune, in the muzzle bone's space
+	FTransform Attach = WeaponData->WeaponLightAttach;
+	TArray<FString> Parts;
+	CVarWeaponLightTune.GetValueOnGameThread().ParseIntoArrayWS(Parts);
+	if (!Parts.IsEmpty())
+	{
+		float V[6] = {};
+		for (int32 Index = 0; Index < FMath::Min(Parts.Num(), 6); ++Index)
+		{
+			V[Index] = FCString::Atof(*Parts[Index]);
+		}
+		Attach.AddToTranslation(FVector(V[0], V[1], V[2]));
+		Attach.SetRotation(Attach.GetRotation() * FRotator(V[3], V[4], V[5]).Quaternion());
+	}
+	const FName Bone = WeaponData->MuzzleSocketName;
+	const FTransform MeshRelative = WeaponData->WeaponLightMeshTransform * Attach;
+
+	auto Place = [&](UStaticMeshComponent* LightMesh, USkeletalMeshComponent* Gun)
+	{
+		if (LightMesh->GetAttachParent() != Gun || LightMesh->GetAttachSocketName() != Bone)
+		{
+			LightMesh->AttachToComponent(Gun, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Bone);
+		}
+		LightMesh->SetRelativeTransform(MeshRelative);
+		LightMesh->SetVisibility(bFitted);
+	};
+	Place(WeaponLightMesh, Mesh);
+	Place(ThirdPersonWeaponLightMesh, ThirdPersonMesh);
+	// The third-person copy is hidden until the draw brings it up; the light goes with it
+	ThirdPersonWeaponLightMesh->SetHiddenInGame(ThirdPersonMesh->bHiddenInGame);
+
+	// Lights reach every viewer, so only one beam: on the copy this machine sees
+	USkeletalMeshComponent* Visible = GetVisibleMesh();
+	if (WeaponLightBeam->GetAttachParent() != Visible || WeaponLightBeam->GetAttachSocketName() != Bone)
+	{
+		WeaponLightBeam->AttachToComponent(Visible, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Bone);
+	}
+	WeaponLightBeam->SetRelativeTransform(FTransform(WeaponData->WeaponLightLensOffset) * Attach);
+	WeaponLightBeam->SetVisibility(bOn && !(Visible == ThirdPersonMesh && ThirdPersonMesh->bHiddenInGame));
+
+	if (CVarDebugThirdPerson.GetValueOnGameThread() == 4)
+	{
+		UE_LOG(LogTacticalHorror, Warning, TEXT("%s light: fitted=%d on=%d bone=%s boneIdx=%d | FP mesh=%s vis=%d | TP mesh=%s vis=%d hidden=%d | muzzleTP=%s scale=%s"),
+			*GetName(), bFitted, bOn, *Bone.ToString(), ThirdPersonMesh->GetBoneIndex(Bone), *WeaponLightMesh->GetComponentLocation().ToString(), WeaponLightMesh->IsVisible(),
+			*ThirdPersonWeaponLightMesh->GetComponentLocation().ToString(), ThirdPersonWeaponLightMesh->IsVisible(), ThirdPersonWeaponLightMesh->bHiddenInGame,
+			*ThirdPersonMesh->GetSocketLocation(Bone).ToString(), *ThirdPersonWeaponLightMesh->GetComponentScale().ToString());
+	}
 }
 
 void ATHWeaponBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -153,6 +370,7 @@ void ATHWeaponBase::BeginPlay()
 	}
 
 	SetupThirdPersonMesh();
+	SetupWeaponLight();
 
 	// On clients the equip notify can arrive before BeginPlay, so don't hide a weapon that is already held
 	if (!bIsEquipped)
@@ -231,7 +449,7 @@ void ATHWeaponBase::OnEquipped()
 			Body->RaiseWeapon();
 		}
 	}
-	ThirdPersonMesh->SetHiddenInGame(ThirdPersonRevealTime > GetWorld()->GetTimeSeconds());
+	ThirdPersonMesh->SetHiddenInGame(!UsesThirdPersonWeaponCopy() || ThirdPersonRevealTime > GetWorld()->GetTimeSeconds());
 
 	ReceiveEquipped();
 }
@@ -256,6 +474,8 @@ void ATHWeaponBase::OnUnequipped()
 		GetWorldTimerManager().ClearTimer(ReloadTimer);
 		bIsReloading = false;
 	}
+	UpdateWeaponLight();
+	ResetThirdPersonMagazine();
 
 	ReceiveUnequipped();
 }
@@ -372,6 +592,8 @@ void ATHWeaponBase::Tick(float DeltaSeconds)
 		AttachThirdPersonMesh();
 	}
 	UpdateThirdPersonMesh();
+	UpdateWeaponLight();
+	UpdateThirdPersonMagazine();
 
 	if (IsLocallyControlledOwner())
 	{
@@ -459,6 +681,11 @@ void ATHWeaponBase::AttachThirdPersonMesh()
 	}
 	ThirdPersonBody = Body;
 	AddTickPrerequisiteComponent(Body);
+	if (!UsesThirdPersonWeaponCopy())
+	{
+		ThirdPersonMesh->SetHiddenInGame(true);
+		return;
+	}
 
 	// Attached to the hand so that, between our updates, it moves with it
 	ThirdPersonMesh->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponData->ThirdPersonHandBone);
@@ -469,6 +696,11 @@ void ATHWeaponBase::UpdateThirdPersonMesh()
 {
 	const USkeletalMeshComponent* Body = ThirdPersonBody.Get();
 	const APawn* Pawn = GetOwningPawn();
+	if (!UsesThirdPersonWeaponCopy())
+	{
+		ThirdPersonMesh->SetHiddenInGame(true);
+		return;
+	}
 	if (!Body || !Pawn || !WeaponData || !bIsEquipped || ThirdPersonMesh->GetAttachParent() != Body)
 	{
 		return;
@@ -706,6 +938,7 @@ void ATHWeaponBase::UpdateFirstPersonRendering()
 		{
 			Quad->SetFirstPersonPrimitiveType(Desired);
 		}
+		WeaponLightMesh->SetFirstPersonPrimitiveType(Desired);
 	}
 }
 
@@ -1058,6 +1291,10 @@ void ATHWeaponBase::OnRep_IsReloading()
 {
 	if (bIsReloading)
 	{
+		// Third person: the magazine comes out and a new one goes in, timed from here
+		ResetThirdPersonMagazine();
+		ReloadStartTime = GetWorld()->GetTimeSeconds();
+
 		if (WeaponData)
 		{
 			if (WeaponData->ReloadSound)
@@ -1071,7 +1308,7 @@ void ATHWeaponBase::OnRep_IsReloading()
 
 			if (const UTHBodyAnimSet* BodySet = WeaponData->BodyAnimSet)
 			{
-				PlayBodyAction(BodySet->Reload, WeaponData->ReloadDuration, BodySet->ActionBlendTime, BodySet->ActionBlendTime);
+				PlayBodyAction(BodySet->Reload, WeaponData->ReloadDuration, BodySet->ActionBlendTime, FMath::Max(BodySet->ActionBlendTime, BodySet->ReloadBlendOutTime));
 			}
 		}
 		ReceiveReloadStarted();

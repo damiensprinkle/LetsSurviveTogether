@@ -86,7 +86,7 @@ void UTHAmmoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	ATHWeaponBase* Weapon = GetShownWeapon();
-	const UTHWeaponData* Data = Weapon ? Weapon->GetWeaponData() : nullptr;
+	const UTHWeaponData* Data = Weapon && Weapon->IsFirearm() ? Weapon->GetWeaponData() : nullptr;
 
 	// Hide the content, not this widget: a hidden widget isn't ticked, so it would never come back
 	if (UWidget* Content = WidgetTree ? WidgetTree->RootWidget : nullptr)

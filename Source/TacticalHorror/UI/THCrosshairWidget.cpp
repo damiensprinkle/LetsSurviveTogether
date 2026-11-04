@@ -1,4 +1,5 @@
 #include "UI/THCrosshairWidget.h"
+#include "Weapons/THWeaponBase.h"
 #include "Settings/THCrosshairSettingsSubsystem.h"
 #include "Weapons/THWeaponComponent.h"
 #include "Blueprint/WidgetTree.h"
@@ -71,7 +72,7 @@ bool UTHCrosshairWidget::ShouldShow() const
 		return false;
 	}
 	const UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>();
-	return Weapons && Weapons->GetCurrentWeapon() && !Weapons->IsAiming();
+	return Weapons && Weapons->GetCurrentWeapon() && Weapons->GetCurrentWeapon()->IsFirearm() && !Weapons->IsAiming();
 }
 
 void UTHCrosshairWidget::FindTemplateCrosshair()

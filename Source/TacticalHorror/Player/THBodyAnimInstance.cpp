@@ -1034,12 +1034,16 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	// Hands onto the weapon, eased in and out so switching weapons or finishing a reload doesn't snap
 	// Lowered, the weapon rides the right hand of the lowered animation instead
-	const float IKTarget = bHasWeaponGrip && Held ? Held->HandIKWeight * (1.0f - FullPoseActionWeight) * ReadyAlpha : 0.0f;
-	HandIKAlpha = FMath::FInterpConstantTo(HandIKAlpha, IKTarget, DeltaSeconds, 8.0f);
+	// Eased so the hands take over early in an action's blend-out (the action's end pose can hold the gun elsewhere)
+	const float ActionHandsFree = 1.0f - FullPoseActionWeight * FullPoseActionWeight * FullPoseActionWeight;
+	const float IKTarget = bHasWeaponGrip && Held ? Held->HandIKWeight * ActionHandsFree * ReadyAlpha : 0.0f;
+	// While an action blends in or out its own weight is already smooth: follow it exactly, so the hands come back onto
+	// the weapon as the action leaves (lagging behind shows the action's end pose, e.g. the left hand under the gun)
+	HandIKAlpha = FullPoseActionWeight > 0.001f ? IKTarget : FMath::FInterpConstantTo(HandIKAlpha, IKTarget, DeltaSeconds, 8.0f);
 	// Lowered, the left hand still goes onto the weapon (which rides the right hand)
 	const float LoweredLeftTarget = bHasWeaponGrip && Held && Lowered && Lowered->bLeftHandOnWeapon && WeaponGrip.bHasGunFromRightHand && WeaponGrip.bLeftHand
-		&& !WeaponGrip.bLeftHandFollowsRight ? (1.0f - ReadyAlpha) * (1.0f - FullPoseActionWeight) : 0.0f;
-	LoweredLeftAlpha = FMath::FInterpConstantTo(LoweredLeftAlpha, LoweredLeftTarget, DeltaSeconds, 8.0f);
+		&& !WeaponGrip.bLeftHandFollowsRight ? (1.0f - ReadyAlpha) * ActionHandsFree : 0.0f;
+	LoweredLeftAlpha = FullPoseActionWeight > 0.001f ? LoweredLeftTarget : FMath::FInterpConstantTo(LoweredLeftAlpha, LoweredLeftTarget, DeltaSeconds, 8.0f);
 	if ((HandIKAlpha > 0.001f || LoweredLeftAlpha > 0.001f) && bHasWeaponGrip)
 	{
 		NewSnapshot.LoweredLeftWeight = LoweredLeftAlpha;

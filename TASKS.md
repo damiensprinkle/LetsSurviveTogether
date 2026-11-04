@@ -69,6 +69,38 @@ Built: ammo readout bottom right (`30 / 90`, AUTO / SEMI, RELOADING, red when lo
 To check in play: the G17 shows no fire mode (it only has one), switching weapons updates the counter, and a client leaving / the host leaving in a two-player game.
 
 Fixed 2026-11-04 (found in play): the counter never appeared, because it hid itself before the gun was equipped and a hidden widget isn't ticked; it now hides only its contents. The template's dot still showed in PIE; the crosshair now hides the dot in every template crosshair in its world, re-checked every second. Checked off-screen on a single player and on a LAN client (`17 / 60` on the G17, `30 / 90 AUTO` on the M4, no dot). Styles T_CH002, 005, 007 and 008 have a dot drawn into the image itself.
+## Third-person reload magazine (2026-11-04)
+Other players now see the magazine handled: it leaves the gun and drops to the floor (a physics prop, local on every machine, gone after 30 s; it ignores players), a new one appears in the left hand when the hand reaches the waist, and the gun's magazine shows again when it is seated.
+- Meshes: `SM_M4_Magazine` / `SM_G17_Magazine`, cut from each gun's rig (the triangles skinned to the in-gun magazine bone: M4 `Mag1_j`, G17 `Mag2_j`) by `Scripts/Tools/setup_magazines.py`, which also works out how the first-person reload holds a magazine in the left palm.
+- Timing (*Third Person Reload* on `DA_M4` / `DA_G17`, fractions of the reload): M4 drop 0.15, grab 0.27, seat 0.57 (moved earlier after the developer's play test); G17 drop 0.08, grab 0.28, seat 0.52, read from the Lyra reloads' hand motion.
+- Checked off-screen from the side for both guns: the magazine falls, the hand carries the new one, it is seated.
+- To check in play: whether the magazine in the hand sits right (rotate / move it with `ThirdPersonMagazineInPalm`), the timings, and the drop with two players. No drop sound yet (`MagazineDropSound`: pick one from the foley packs).
+
+## M4 spray pattern (2026-11-04)
+`DA_M4` Recoil Pattern is now CS2's M4A4, from the developer's measured cumulative bullet positions (bullets 1, 5, 10 ... 30). `Scripts/Tools/set_m4_spray.py` fits a curve exactly through those points and stores the per-shot steps; bullets land on the measured positions when not compensating (the camera takes `ViewKickFraction` 0.5 of it, the bullets the rest). To check: spray 30 at a wall without pulling down and compare with CS2; feel of the camera kick.
+
+## Third-person reload hand-back (2026-11-04)
+The left hand hung below the M4 at the end of the reload before snapping onto the gun. Cause: Lyra's reload (`MM_Rifle_Reload`) returns its hand to where Lyra's gun is held (lower than ours) for its last ~25%, and the hand IK only came back after the reload ended, lagging a further ~0.1 s. Now the hands are handed back over the reload's last second (`ReloadBlendOutTime` on the body set, 1 s), eased so the IK takes most of the hand early, and the IK follows the blend exactly instead of lagging. Checked off-screen from the left side. If the hand leaves the magazine too early, lower `ReloadBlendOutTime` on `DA_Body_Rifle` (0.6 is the next step down).
+
+## Flashlights (2026-11-04)
+The developer's design: two separate items. The **hand flashlight** is found early in the first mission; once picked up, **3** takes it out at any time, and it is the bright one. The **weapon light** is an upgrade (after the first mission), fitted under the gun's barrel, dimmer, switched with **L**.
+
+Built:
+- `ATHHandFlashlight` (a held item in the weapon slots, so 1 / 2 / 3 and the wheel switch to it): the FP Flashlight Animations pack's arms with its idle and draw, the model in the arms' `hand_r_Flashlight` socket, and a bright beam; **left mouse** switches it on and off. No crosshair, ammo readout or aiming while held. Other players see the body hold it in Lyra's flashlight pose (`DA_Body_Flashlight`) with the model in the body's right hand, and see its beam.
+- Picking up the template's flashlight (its `PickupFlashLight` flag) gives the hand flashlight and plays the pack's **inspect** animation. Console `GiveFlashlight` does the same for testing.
+- Weapon light: the Fab tactical light under the M4's handguard and the G17's frame, placed from each gun's muzzle bone so it follows reloads. **L** switches it (replicated, kept across weapon switches). Unlocked from the start for now (`bStartWithWeaponLight` on the weapon component); set it off once missions can award it (`UnlockWeaponLight`).
+- The template's own L flashlight is disabled (its key binding is removed when the character gets input).
+- Third-person draw: the body plays the pistol draw (`MM_Pistol_Equip`), and the flashlight and its beam appear part-way through, when the hand comes up (as with the guns).
+- Checked off-screen: both beams in first person in a darkened Demo, the weapon light model under the M4 from the side, the hand flashlight's inspect and idle, and the body holding it in third person.
+
+To check in play:
+- Pick up the flashlight in Demo: the inspect should play once, then 3 / 1 / 2 switch. **Check whether the template still shows its own flashlight model or beam after pickup** (it has hidden flashlight components that its Blueprint may turn on); if so they need hiding.
+- Beam brightness and cone of both lights in a dark room (hand: `Intensity` etc. on the flashlight class defaults; weapon: *Weapon Light* on `DA_M4` / `DA_G17`).
+- G17 weapon light placed by the developer under the slide (`DA_G17` Weapon Light Attach: location 1.5, 0, 9; rotation pitch 90, yaw -90, roll 0), copied into `setup_flashlights.py`.
+- The weapon light's position on each gun, especially the G17 (`th.WeaponLightTune`, then copy into `setup_flashlights.py`).
+- Two players: the other player's flashlight beam and weapon light, on and off.
+- The first-person arms with the flashlight are the pack's grey mannequin arms, not the gloved arms of the gun packs.
+
 Also fixed 2026-11-04: after hosting or joining from the main menu nothing responded, because the menu's UI-only input mode carried over to the game map. `ATHPlayerController::BeginPlay` now sets game-only input and hides the cursor.
 
 ## Next and later

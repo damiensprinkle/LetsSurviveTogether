@@ -259,6 +259,41 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person")
 	TObjectPtr<UAnimSequenceBase> ThirdPersonPose;
 
+	// Third-person reload: the magazine drops out of the gun, a new one appears in the left hand at the waist and is
+	// seated. Set up by Scripts/Tools/setup_magazines.py. Times are fractions of ReloadDuration (the body's reload).
+
+	/** The magazine bone in the gun, hidden on the third-person gun while the magazine is out. None = no magazine handling. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload")
+	FName ThirdPersonMagazineBone;
+
+	/** The magazine on its own, modelled in ThirdPersonMagazineBone's space: dropped, and held in the left hand. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload")
+	TObjectPtr<UStaticMesh> ThirdPersonMagazineMesh;
+
+	/** The new magazine relative to the left palm (knuckles: X toward the fingers, Y from pinky to index). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload")
+	FTransform ThirdPersonMagazineInPalm;
+
+	/** When the old magazine leaves the gun and falls. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload", meta = (ClampMin = 0, ClampMax = 1))
+	float MagazineDropAt = 0.2f;
+
+	/** When the left hand, at the waist, has the new magazine. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload", meta = (ClampMin = 0, ClampMax = 1))
+	float MagazineGrabAt = 0.32f;
+
+	/** When the new magazine is in the gun. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload", meta = (ClampMin = 0, ClampMax = 1))
+	float MagazineSeatAt = 0.57f;
+
+	/** Seconds a dropped magazine stays on the floor. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload", meta = (ClampMin = 0, Units = "s"))
+	float DroppedMagazineLifetime = 30.0f;
+
+	/** Played when a dropped magazine first hits something. Empty = silent. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Third Person Reload")
+	TObjectPtr<USoundBase> MagazineDropSound;
+
 	// Presentation
 
 	/** Socket or bone the muzzle is measured from. */
@@ -368,4 +403,46 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shell Casing")
 	TObjectPtr<USoundAttenuation> ShellBounceAttenuation;
+
+	// Weapon light: an under-barrel flashlight (L), an upgrade the weapon component unlocks. Dimmer than the hand
+	// flashlight. Placed from the muzzle bone (MuzzleSocketName) so it moves with the gun in every animation.
+
+	/** Empty = this weapon has no light. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light")
+	TObjectPtr<UStaticMesh> WeaponLightMesh;
+
+	/**
+	 * Where the light sits, in the space of the MuzzleSocketName bone. Its X axis is the beam direction (along the barrel).
+	 * Tune live with th.WeaponLightTune.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light")
+	FTransform WeaponLightAttach;
+
+	/** Turns and scales the mesh inside that frame, so its lens faces down the beam. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light")
+	FTransform WeaponLightMeshTransform;
+
+	/** Where the beam starts, from the attach point along the frame's axes (X = forward along the beam). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (Units = "cm"))
+	FVector WeaponLightLensOffset = FVector(8.0f, 0.0f, 0.0f);
+
+	/** Same (unitless) scale as the hand flashlight's Intensity (10000); keep it well below that. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0))
+	float WeaponLightIntensity = 4000.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0, Units = "cm"))
+	float WeaponLightRange = 2000.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0, ClampMax = 80, Units = "Degrees"))
+	float WeaponLightInnerCone = 8.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0, ClampMax = 80, Units = "Degrees"))
+	float WeaponLightOuterCone = 24.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light")
+	FLinearColor WeaponLightColor = FLinearColor(1.0f, 0.95f, 0.88f);
+
+	/** Played when the light is switched on or off (also used by the hand flashlight). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light")
+	TObjectPtr<USoundBase> WeaponLightClickSound;
 };

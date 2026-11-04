@@ -36,7 +36,7 @@ Source/TacticalHorror/
 ├── Core/          THGameInstance, THGameMode, THGameState (mission phase), THPlayerState (debrief stats), THMenuGameMode (+ menu player controller)
 ├── Player/        THCharacter, THCharacterMovementComponent, THPlayerController, THBodyAnimInstance, THBodyAnimSet
 │   └── Components/THHealthComponent
-├── Weapons/       THWeaponBase, THWeaponComponent, THWeaponData, THWeaponTypes, THShellCasing, THAnimNotify_WeaponSound
+├── Weapons/       THWeaponBase, THWeaponComponent, THWeaponData, THWeaponTypes, THShellCasing, THAnimNotify_WeaponSound, THHandFlashlight
 ├── Settings/      THAudioSettingsSubsystem
 ├── UI/            THAudioSettingsWidget (settings panel), THMainMenuWidget, THSessionEntryWidget, THCrosshairWidget, THAmmoWidget
 └── Multiplayer/   THSessionSubsystem
@@ -63,6 +63,8 @@ Planned (not yet created): `Equipment/`, `AI/`, `Missions/` — see TASKS.md. In
 - **`UTHWeaponData`** (Data Asset) — all tuning: damage, headshot multiplier, CS-style range falloff, RPM, fire modes, magazine/reserve, reload/equip time, accuracy model, recoil pattern, ADS, move speed, sounds/FX.
 - **`ATHWeaponBase`** — hitscan behaviour. Blueprint subclasses (`BP_Weapon_Rifle`, `BP_Weapon_Pistol`) set mesh + data and can implement `On Fired`, `On Reload Started/Finished`, `On Equipped/Unequipped`, `On Fire Mode Changed`, and override `AttachToOwner`.
 - **`UTHWeaponComponent`** — loadout spawn (server), switching (client-predicted), ADS (FOV lerp, replicated for movement speed), weapon input.
+- **`ATHHandFlashlight`** — a held item that isn't a gun (`IsFirearm()` false: no ammo readout, crosshair or ADS; left mouse switches the light). Given by `UTHWeaponComponent::GiveHandFlashlight` when the owning client sees the template character's `PickupFlashLight` flag turn true (`FlashlightPickupFlag`), added as the next slot (key 3) and inspected. Its own model components: first person in the arms' `hand_r_Flashlight` socket, third person in the body's `hand_r`; `UsesThirdPersonWeaponCopy()` false. One beam per machine, on the copy that machine sees.
+- **Weapon light** — `UTHWeaponData` *Weapon Light* section (mesh, attach frame in the muzzle bone's space, lens offset, beam). `ATHWeaponBase` keeps a light model on both copies and one beam on the visible copy. On / unlocked state is replicated on `UTHWeaponComponent` (L, `ToggleWeaponLight`, `UnlockWeaponLight`). `ATHCharacter::PawnClientRestart` removes the template Blueprint's L key binding.
 
 **Gunplay model (CS-inspired)**
 - *Recoil:* a fixed, learnable per-shot pattern (`RecoilPattern`, degrees). `ViewKickFraction` of it moves the camera; the rest only moves bullets. Spray index resets after `RecoilResetDelay` without firing. Camera recovers at `ViewRecoveryRate` after firing stops.
