@@ -1,6 +1,6 @@
 """Retargets Lyra's UE4-mannequin pistol hip-fire idle onto the UE5 mannequin, for the pistol's lowered carry.
 
-  Source: /Game/Blueprint/Lyra_Content/Characters/Mannequin_UE4/Animations/Locomotion/Pistol/MM_Pistol_Idle_Hipfire_UE4
+  Source: /Game/ThirdParty/Lyra/Characters/Mannequin_UE4/Animations/Locomotion/Pistol/MM_Pistol_Idle_Hipfire_UE4
   Result: /Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Idle_Hipfire (overwritten if it exists)
 Uses Lyra's RTG_UE4Manny_UE5Manny. The batch retargeter needs Slate, so it can't run in the headless commandlet; run
 it in a full editor drawn off-screen, which quits when done (editor closed first; copy the script to a file name that
@@ -10,7 +10,7 @@ doesn't start with "r", since "\\r" in the -ExecutePythonScript path is read as 
 import unreal
 
 eal = unreal.EditorAssetLibrary
-LYRA4 = "/Game/Blueprint/Lyra_Content/Characters/Mannequin_UE4/"
+LYRA4 = "/Game/ThirdParty/Lyra/Characters/Mannequin_UE4/"
 SOURCE = LYRA4 + "Animations/Locomotion/Pistol/MM_Pistol_Idle_Hipfire_UE4"
 SOURCE_MESH = LYRA4 + "Meshes/SK_Mannequin"
 TARGET_MESH = "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"

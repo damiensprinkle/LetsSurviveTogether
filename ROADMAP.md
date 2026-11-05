@@ -9,7 +9,7 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 
 ## Now: the next few sessions, in order
 
-1. 🔧 **Content cleanup** (in progress 2026-11-04, see *Content pipeline*): delete unused template content, archive unused animations, move packs into `ThirdParty/` and the template into `Template/`. Then the animation renaming, before more guns.
+1. 🔧 **Content cleanup** (2026-11-04/05, see *Content pipeline*): deleting, archiving and the folder moves are done. Next: the animation renaming, before more guns.
 2. **Two-player play test** (Milestone 1 exit): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
 3. **Test range** (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil.
 4. **Hit feedback**: hit-confirm audio cue, blood, bullet holes by surface.
@@ -67,7 +67,7 @@ Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting p
 ## Content pipeline (between Milestones 2 and 3)
 Needed before more guns: there are many animation assets from several packs (Lyra, Sample Animation Pack, UE template, Fab weapon packs) with pack-specific names, and several have been edited.
 
-- 🔧 **Cleanup (2026-11-04):** inventory of what the game uses (`content_inventory.py`); deleted MetaHumans, the UE template leftovers (Variant_Horror, FirstPerson, Input), the Fab M4 / G17 copies, the placeholder guns and importer leftovers (`cleanup_delete.py`; all in git history); ⬜ unused animations to `_Archive/Animations`; ⬜ packs to `ThirdParty/<Pack>`, the horror template to `Template/` (`cleanup_reorganize.py`).
+- 🔧 **Cleanup (2026-11-04):** inventory of what the game uses (`content_inventory.py`); deleted MetaHumans, the UE template leftovers (Variant_Horror, FirstPerson, Input), the Fab M4 / G17 copies, the placeholder guns and importer leftovers (`cleanup_delete.py`; all in git history); ✅ unused animations to `_Archive/Animations`; ✅ packs to `ThirdParty/<Pack>`, the horror template to `Template/` (moved in the editor 2026-11-05) (`cleanup_reorganize.py`).
 - ⬜ **Naming and folders.** One folder per weapon and one name pattern, for example:
   - first person: `Content/Weapons/<Gun>/Animations/A_FP_<Gun>_<Action>`, e.g. `A_FP_M4_Reload_Empty`
   - third person: `Content/Animations/ThirdPerson/<Gun>/A_TP_<Gun>_<State>_<Action>`, e.g. `A_TP_M4_Lowered_Walk_F`, `A_TP_G17_Raised_Idle`, `A_TP_M4_HandPose`
@@ -77,9 +77,9 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - ⬜ Decide how `setup_body_anims.py` stays the source of truth versus hand-edited assets (it overwrites values; today the developer's numbers are copied into its tables).
 
 ## Milestone 3: Equipment and Atmosphere
-- 🟡 **Flashlights** (2026-11-04): the hand flashlight (found in the first mission, then key 3, bright, inspected on pickup, left mouse on / off) and the weapon light (upgrade, under the barrel, dimmer, L). Both replicated; the template's L flashlight is replaced. Draw and the G17 light placement play-tested. ⬜ Check the Demo pickup and inspect in play, beam brightness in the dark, and both lights with two players; ⬜ the tactical light's material may not use its textures (they show as unused in the content inventory); ⬜ Unlock the weapon light from a mission reward once missions exist; ⬜ gloved first-person arms for the flashlight to match the guns; ⬜ maybe a battery.
+- 🟡 **Flashlights** (2026-11-04): the hand flashlight (found in the first mission, then key 3, bright, inspected on pickup, left mouse on / off) and the weapon light (upgrade, under the barrel, dimmer, L). Both replicated; the template's L flashlight is replaced. Draw and the G17 light placement play-tested. ⬜ Check the Demo pickup and inspect in play, beam brightness in the dark, and both lights with two players; ⬜ the tactical light's material may not use its textures (they show as unused in the content inventory); ⬜ Unlock the weapon light from a mission find once missions exist (Milestone 5); ⬜ **blacklight (UV) mode** for the hand flashlight, an unlock that reveals hidden clues (a material that shows only under the UV beam); ⬜ gloved first-person arms for the flashlight to match the guns; ⬜ maybe a battery.
 - 🔧 Night vision, interaction, doors, pickups: template versions work single-player; **replication not verified**. Convert what breaks into replicated components.
-- ⬜ **Doors:** server-authoritative open / close, replicated state, sound, can't close on a player; open speed / push direction; locked / keyed variants for missions. Optional third-person hand reach when opening (an additive arm animation).
+- ⬜ **Doors:** server-authoritative open / close, replicated state, sound, can't close on a player; open speed / push direction; locked variants for missions, opened by **keys found in the mission or keypads** (codes found as clues) for now (decided 2026-11-04). Optional third-person hand reach when opening (an additive arm animation).
 - 🔧 **Downed and revive.** Built in code, not yet play-tested: at 0 health a player goes down and bleeds out after 30 s; holding **E** for 3 s on them revives at 30% health; when everyone is down the mission restarts. Still to do:
   - ❓ Rules: bleed-out time, whether enemies can finish downed players, whether a downed player can crawl or shoot a pistol, how many downs before death
   - ⬜ Downed body pose and crawl for others to see; the downed first-person view (camera low, desaturated, heartbeat)
@@ -88,6 +88,7 @@ Needed before more guns: there are many animation assets from several packs (Lyr
   - ⬜ Death: spectate a teammate until the mission ends or a respawn point
 - 🟡 Health and damage (`UTHHealthComponent`), friendly fire switch on the GameMode
 - 🔧 Audio: footsteps by movement mode, gun foley, settings menu volume sliders. ⬜ Footsteps by surface (Physical Materials, shared with bullet impacts), reverb zones, an ambience bed
+- ⬜ **Sanity** (GDD 7.2): a per-player sanity value (replicated to its owner); low sanity adds weapon sway and local-only hallucinations (sounds, shapes); restored by lit areas and nearby teammates (❓ drains and restores to decide). **No HUD bar:** shown on an in-world item, e.g. a smartwatch on the wrist with heart rate (raise the arm to look at it, first person and third person), or a journal (❓ which item). Tuning in a data asset.
 - ⬜ Environmental lighting pass for a dark test map
 - ⬜ **Exit:** players navigate a dark test map with their equipment and interact with objects
 
@@ -104,6 +105,8 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 ## Milestone 5: Mission Framework
 - ⬜ Mission data assets, objectives, dependencies, extraction
 - ⬜ Failure and restart (uses the "everyone down" rule), debrief using `ATHPlayerState` stats
+- ⬜ **Found-equipment unlocks** (GDD 12.1): the weapon light, suppressor, extra guns and the flashlight's blacklight mode start locked; finding one in a mission unlocks it for good once the mission is completed. Each player has to pick it up themselves (decided 2026-11-04); saved per player (a SaveGame). The hand flashlight is given right away.
+- ⬜ **Loading screen with tips**, written by the developer (e.g. that locked doors can always be opened). Shown during map travel; the tips live in a data asset so they can be added without code.
 - ⬜ **Exit:** a test mission progresses, completes, fails and restarts
 
 ## Milestone 6: Multiplayer Experience

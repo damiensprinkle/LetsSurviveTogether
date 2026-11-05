@@ -17,9 +17,9 @@ ATHHandFlashlight::ATHHandFlashlight()
 	static ConstructorHelpers::FObjectFinder<UTHWeaponData> DefaultData(TEXT("/Game/Weapons/Data/DA_HandFlashlight.DA_HandFlashlight"));
 	WeaponData = DefaultData.Object;
 	// Paths only (loaded when spawned): assets the class default holds can't be moved or renamed in the editor
-	ArmsMesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms.SK_Mannequin_Arms")));
-	FlashlightMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Mesh/SM_Flashlight.SM_Flashlight")));
-	InspectAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/FPFlashlightAnims/Animations/AS_Flashlight_Inspection.AS_Flashlight_Inspection")));
+	ArmsMesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/ThirdParty/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms.SK_Mannequin_Arms")));
+	FlashlightMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/ThirdParty/FPFlashlightAnims/Mesh/SM_Flashlight.SM_Flashlight")));
+	InspectAnimation = TSoftObjectPtr<UAnimSequenceBase>(FSoftObjectPath(TEXT("/Game/ThirdParty/FPFlashlightAnims/Animations/AS_Flashlight_Inspection.AS_Flashlight_Inspection")));
 
 	HeldFlashlight = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeldFlashlight"));
 	HeldFlashlight->SetupAttachment(Mesh, HandSocket);

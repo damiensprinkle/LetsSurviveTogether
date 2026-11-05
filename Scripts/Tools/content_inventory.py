@@ -15,9 +15,9 @@ ROOTS = [
     "/Game/Maps/MainMenu",
     "/Game/Blueprint/Character/BP_FirstPersonCharacter",   # THGameMode's default pawn
     "/Game/Weapons/Data/DA_HandFlashlight",                 # ATHHandFlashlight defaults
-    "/Game/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms",
-    "/Game/FPFlashlightAnims/Mesh/SM_Flashlight",
-    "/Game/FPFlashlightAnims/Animations/AS_Flashlight_Inspection",
+    "/Game/ThirdParty/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms",
+    "/Game/ThirdParty/FPFlashlightAnims/Mesh/SM_Flashlight",
+    "/Game/ThirdParty/FPFlashlightAnims/Animations/AS_Flashlight_Inspection",
 ] + ["/Game/UI/Crosshairs/T_CH00%d" % i for i in range(1, 9)]
 
 MAPS = ["Demo", "Maps/MainMenu"]

@@ -14,10 +14,10 @@ import unreal
 eal = unreal.EditorAssetLibrary
 DATA = "/Game/Weapons/Data"
 BODY = "/Game/Characters/BodyAnimSets"
-FP = "/Game/FPFlashlightAnims/Animations/"
-LYF = "/Game/Blueprint/Lyra_Content/Characters/Mannequin/Animations/Locomotion/FlashLight/"
+FP = "/Game/ThirdParty/FPFlashlightAnims/Animations/"
+LYF = "/Game/ThirdParty/Lyra/Characters/Mannequin/Animations/Locomotion/FlashLight/"
 CLICK = "/Game/Audio/Cue/FlashlightButton_Cue"
-LIGHT_MESH = "/Game/Fab/FREE_Tactical_Flashlight_-_Game_Ready/SM_Attach_Flashlight_01"
+LIGHT_MESH = "/Game/ThirdParty/TacticalFlashLight/SM_Attach_Flashlight_01"
 
 
 def out(msg):

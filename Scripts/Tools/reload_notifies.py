@@ -1,7 +1,7 @@
 import unreal
 def out(m): unreal.log_warning("[TH FN] " + str(m))
 eal = unreal.EditorAssetLibrary
-WAVS = ["/Game/WeaponsFoleySFX/SoundWav/", "/Game/FreeWeaponSFX/Wav/"]
+WAVS = ["/Game/ThirdParty/WeaponsFoleySFX/SoundWav/", "/Game/ThirdParty/FreeWeaponSFX/Wav/"]
 att = eal.load_asset("/Game/Audio/FootStep/FootstepSound/Sounds/FootstepsSoundAttenuation")
 cls = unreal.load_class(None, "/Script/TacticalHorror.THAnimNotify_WeaponSound")
 

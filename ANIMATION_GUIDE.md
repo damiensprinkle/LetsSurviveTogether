@@ -166,7 +166,7 @@ The commands above can't bend fingers. Fingers are posed in the animation editor
 
 1. In the Content Browser, open the folder of a pose close to what you want:
    - pistol: `Content/Characters/Mannequins/Anims/Pistol/` → `MF_Pistol_Idle_ADS`
-   - rifle: `Content/SampleAnimationPack/Animations/Rifle/` → `AS_F_ADS_Rifle_Idle_01`
+   - rifle: `Content/ThirdParty/SampleAnimationPack/Animations/Rifle/` → `AS_F_ADS_Rifle_Idle_01`
 2. Right-click it → **Duplicate**, and name the copy after the hand, e.g. `AS_Pistol_HandPose`. Never edit the original.
 3. Open the copy. Pause it and scrub to frame 0.
 4. In the **Skeleton Tree** panel on the left, use the search box to find the finger bones (below). If they're hidden, open the panel's settings (gear or filter icon) and choose **Show All Bones**.
@@ -210,9 +210,9 @@ To try a different aiming pose or walk:
 
 1. Open `DA_Body_Rifle` / `DA_Body_Pistol`.
 2. Change the slot, e.g. **Upper Body Pose** or **Walk Forward**, to another animation for the **UE5 mannequin** skeleton. Good sources in the project:
-   - `Content/SampleAnimationPack/Animations/Rifle/`: rifle idles, walks, aims (female, `AS_F_*`)
+   - `Content/ThirdParty/SampleAnimationPack/Animations/Rifle/`: rifle idles, walks, aims (female, `AS_F_*`)
    - `Content/Characters/Mannequins/Anims/Rifle/` and `/Pistol/`: UE5 template
-   - `Content/Blueprint/Lyra_Content/Characters/Mannequin/Animations/`: Lyra (male, `MM_*`). The `Mannequin_UE4` folders are for the old skeleton; avoid them.
+   - `Content/ThirdParty/Lyra/Characters/Mannequin/Animations/`: Lyra (male, `MM_*`). The `Mannequin_UE4` folders are for the old skeleton; avoid them.
 3. Play and check. Because the gun and hands are placed by IK, a new pose mostly changes the torso, the elbows' starting point and the hand angles. You may need to retune the hand rotations afterwards.
 
 Walk speed matching is automatic (from each clip's root motion). If a walk slides or looks slow-motion, set **Walk Anim Speed** / **Crouch Anim Speed** on the set (cm/s of the clip).

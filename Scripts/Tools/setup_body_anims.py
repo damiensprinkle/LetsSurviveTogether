@@ -12,10 +12,10 @@ import unreal
 
 eal = unreal.EditorAssetLibrary
 FOLDER = "/Game/Characters/BodyAnimSets"
-LY = "/Game/Blueprint/Lyra_Content/Characters/Mannequin/Animations/"
+LY = "/Game/ThirdParty/Lyra/Characters/Mannequin/Animations/"
 LYU = LY + "Locomotion/Unarmed/"
 CM = "/Game/Characters/Mannequins/Anims/"
-SAP = "/Game/SampleAnimationPack/Animations/Rifle/"
+SAP = "/Game/ThirdParty/SampleAnimationPack/Animations/Rifle/"
 
 
 def out(msg):

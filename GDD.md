@@ -217,6 +217,21 @@ be more frightening than another combat encounter.
 - Many horror players are not used to tactical, skill-based shooting,
   so the difficulty options and onboarding should make the gunplay
   approachable without removing it.
+7.2 Sanity (developer's idea, 2026-11-04)
+Each player has a sanity bar. As sanity drops:
+- Auditory and visual hallucinations (false footsteps, whispers,
+  shapes at the edge of the light).
+- Shakier aim: more weapon sway.
+Ideas for restoring it (undecided): nicely lit rooms, staying near
+other players. Open question: what drains it (darkness, seeing
+enemies, a teammate going down). Hallucinations are private: they
+play only on the affected player's machine, so teammates see and hear
+different things.
+No sanity bar on the HUD. Sanity is shown diegetically, through an
+in-world item the player looks at, such as a smartwatch showing heart
+rate (higher as sanity drops), or a journal. The item is still to be
+chosen. The same item could later carry other information instead of
+a traditional HUD (objectives, codes and clues for keypads).
 8. Mission Design
 Missions should be built from reusable objective types and data rather
 than mission-specific hardcoded logic.
@@ -352,6 +367,23 @@ Potential progression systems:
 - Access to additional missions.
 Avoid large permanent damage upgrades. Maintain a relatively level
 playing field between new and experienced players.
+
+12.1 Found Equipment (developer's direction, 2026-11-04)
+Equipment and extra guns start locked. They are found during missions
+and unlocked permanently once that mission is completed:
+- Hand flashlight: the exception, given right away (found early in
+  the first mission).
+- Weapon light (tactical flashlight on the gun).
+- Suppressor.
+- Additional guns.
+- Flashlight blacklight (UV) mode: an unlock that reveals hidden clues
+  (writing, traces) only visible under it, used for secrets later on.
+In co-op, each player has to pick up a find themselves to unlock it.
+Finds can sit off the main path: the story may never require opening
+a locked door, but the room behind it may hold an upgrade. Locked
+doors can always be opened somehow, which rewards exploring. For now
+they open with keys found in the mission or keypads (codes found as
+clues).
 
 A debrief may include:
 - Mission completion status.

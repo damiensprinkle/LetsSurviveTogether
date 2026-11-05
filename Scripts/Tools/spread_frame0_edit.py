@@ -10,7 +10,7 @@ Back up the files first. Run headless with the editor closed (see README.md), th
 """
 import unreal
 
-RIFLE = "/Game/SampleAnimationPack/Animations/Rifle/"
+RIFLE = "/Game/ThirdParty/SampleAnimationPack/Animations/Rifle/"
 EDITED = RIFLE + "AS_F_Rifle_Idle_01"
 ORIGINAL = "/Game/TempOrigIdle/AS_F_Rifle_Idle_01"
 ALSO = [RIFLE + "AS_F_Rifle_Walk_F_Loop", RIFLE + "AS_F_Rifle_Walk_B_Loop",

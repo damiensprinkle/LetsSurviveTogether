@@ -7,7 +7,7 @@ unreal.SystemLibrary.execute_console_command(None, "Interchange.FeatureFlags.Imp
 SRC = r"C:\Users\Damien Sprinkle\Documents\Unreal Projects\LetsSurviveTogether\SourceArt\AmmunitionMeshesTextures"
 DEST = "/Game/Weapons/Ammo"
 parent = eal.load_asset("/InterchangeAssets/Materials/FBXLegacyPhongSurfaceMaterial")
-foley = "/Game/WeaponsFoleySFX/SoundWav/"
+foley = "/Game/ThirdParty/WeaponsFoleySFX/SoundWav/"
 attenuation = eal.load_asset("/Game/Audio/FootStep/FootstepSound/Sounds/FootstepsSoundAttenuation")
 
 # name: (mesh fbx, diffuse png, normal png, real case length cm)
