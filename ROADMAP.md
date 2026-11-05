@@ -10,10 +10,11 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 ## Now: the next few sessions, in order
 
 1. 🔧 **Content cleanup** (2026-11-04/05, see *Content pipeline*): deleting, archiving and the folder moves are done. Next: the animation renaming, before more guns.
-2. **Two-player play test** (Milestone 1 exit): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
-3. **Test range** (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil.
-4. **Hit feedback**: hit-confirm audio cue, blood, bullet holes by surface.
-5. **Doors and downed / revive** (Milestone 3), then enemies.
+2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 9 tests, about 40 s (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
+3. **Two-player play test** (Milestone 1 exit): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
+4. **Test range** (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil. Separate from the tests' own map (`/Game/Tests/Maps/L_FunctionalTests`).
+5. **Hit feedback**: hit-confirm audio cue, blood, bullet holes by surface.
+6. **Doors and downed / revive** (Milestone 3), then enemies.
 
 Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting play-tested), crosshairs and ammo HUD, flashlights, third-person reload magazine, CS2 M4A4 spray.
 

@@ -19,6 +19,7 @@ public class TacticalHorror : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"AnimationCore",
+			"AssetRegistry",
 			"EngineSettings",
 			"OnlineSubsystem",
 			"OnlineSubsystemUtils",
@@ -26,6 +27,12 @@ public class TacticalHorror : ModuleRules
 			"Slate",
 			"SlateCore"
 		});
+
+		// Functional tests start and stop play sessions in the editor (Tests/THFunctionalTests.cpp)
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 
 		PublicIncludePaths.Add(ModuleDirectory);
 	}

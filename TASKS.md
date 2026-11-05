@@ -103,6 +103,12 @@ To check in play:
 
 Also fixed 2026-11-04: after hosting or joining from the main menu nothing responded, because the menu's UI-only input mode carried over to the game map. `ATHPlayerController::BeginPlay` now sets game-only input and hides the cursor.
 
+## Content cleanup and automated tests (2026-11-05)
+- Packs moved to `ThirdParty/`, the template to `Template/` (in the editor); paths in C++, scripts and docs updated; play-tested (guns, reloads, flashlight inspect).
+- Automated tests (TESTING.md): `Scripts/run_tests.ps1` runs 9 tests in about 40 s, all passing: recoil math, the M4's CS2 spray, every weapon's setup, content health, a single-player play session (fire, full auto, reload, switching, weapon light, hand flashlight, shot damage) and a listen server + client session (shots, reloads, switching and both lights seen by the other player). Test map: `/Game/Tests/Maps/L_FunctionalTests` (`create_test_map.py`). Run them after every change.
+- Fixed from the tests: other players' bodies had collision off, so bullets couldn't hit them (now they block the bullet channel only; matters for friendly fire and anything shooting players); a crash in the third-person body animation when a weapon's animation set disappeared while the hands were easing off it.
+- Play-test: nothing visible changed, but shooting another player's body now registers hits (friendly fire is off, so no damage between players).
+
 ## Next and later
 The ordered plan and every planned feature (crosshairs, blood, bullet holes, doors, downed / revive, animation cleanup, more guns, menus, Steam, …) are in **ROADMAP.md**, starting with its *Now* list.
 

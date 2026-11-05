@@ -197,6 +197,22 @@ void UTHWeaponComponent::BeginPlay()
 		}
 	}
 
+	// Bullets skip the capsule to hit the body's bones (its physics asset), so the body must block the bullet channel.
+	// The horror template's body has collision off; turn on queries for bullets only, nothing else collides with it.
+	USkeletalMeshComponent* Body = GetBodyMesh();
+	if (bBodyBlocksBullets && Body && Body->GetPhysicsAsset())
+	{
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Body->SetCollisionObjectType(ECC_Pawn);
+		Body->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Body->SetCollisionResponseToChannel(BulletTraceChannel, ECR_Block);
+		if (GetOwner()->HasAuthority())
+		{
+			// The server traces shots against bones even where nobody looks at this body
+			Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		}
+	}
+
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	if (!Pawn || !Pawn->HasAuthority())
 	{

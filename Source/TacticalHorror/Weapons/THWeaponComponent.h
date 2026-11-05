@@ -127,6 +127,17 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Body Animation")
 	TSubclassOf<UAnimInstance> BodyAnimClass;
 
+	/**
+	 * The body others see blocks bullets (BulletTraceChannel only) with its physics asset, so shots hit bones; nothing
+	 * else collides with it. Needed because bullets pass through the capsule.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Body Animation")
+	bool bBodyBlocksBullets = true;
+
+	/** The trace channel bullets use: "Weapon" in DefaultEngine.ini (as ATHWeaponBase::TraceChannel). */
+	UPROPERTY(EditAnywhere, Category = "Body Animation")
+	TEnumAsByte<ECollisionChannel> BulletTraceChannel = ECC_GameTraceChannel1;
+
 	/** Body animations with no weapon held, and the legs for weapon sets that have none. */
 	UPROPERTY(EditAnywhere, Category = "Body Animation")
 	TObjectPtr<UTHBodyAnimSet> UnarmedBodyAnimSet;

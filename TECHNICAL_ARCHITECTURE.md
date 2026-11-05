@@ -65,7 +65,7 @@ Content/
 - New packs go in `ThirdParty/<Pack>`: import there, or after adding from Fab move the folder in the editor (drag it, then right-click the folder → Fix Up Redirectors). Fab updates re-download into the pack's original folder.
 - Move content only inside the editor, never in Windows Explorer, and pick *Delete unreferenced redirectors* in Fix Up Redirectors. A few assets may fail to save at the old path ("Illegal reference to private object ... ThumbnailInfo"): their moved copy is fine, delete the stale old file once `content_verify.py` shows nothing refers to it. Then update hard-coded paths (`grep -r "/Game/"` in Source, Config, Scripts). Scripted moves (`cleanup_reorganize.py`) work for animations and plain assets but crashed the editor on Blueprints and maps; Python has no redirector fix-up (use the editor's, or `-run=ResavePackages -fixupredirects`).
 - C++ refers to content by soft path (loaded at spawn / game start), never with `ConstructorHelpers` on movable content: assets held by a class default can't be moved in the editor.
-- `Scripts/Tools/content_inventory.py` reports what the game uses per folder; `content_verify.py` lists leftover redirectors and missing references (54 missing editor-preview references came broken with the template and packs: Characters/Heroes, FPSTemplate, ArchVis).
+- `Scripts/Tools/content_inventory.py` reports what the game uses per folder; `content_verify.py` lists leftover redirectors and missing references (the automated tests `TacticalHorror.Content.*` check the same on every run; see TESTING.md) (54 missing editor-preview references came broken with the template and packs: Characters/Heroes, FPSTemplate, ArchVis).
 - Deleted in the cleanup (restore from git history if ever needed): MetaHumans, the UE template's Variant_Horror / FirstPerson / Input, the Fab copies of the M4 / G17 packs, the placeholder Rifle / Pistol / grenade launcher, the G17 importer leftovers, and the two packs' showcase maps.
 
 ## Systems
@@ -101,7 +101,7 @@ Content/
 - Cosmetics to everyone else via unreliable multicast.
 - Not done yet: lag compensation (rewinding targets). Fine for co-op vs AI; revisit if PvP or fast enemies show hit-reg complaints.
 
-**Collision**: custom trace channel **`Weapon`** (`ECC_GameTraceChannel1`, default Block). `ATHCharacter` makes capsules ignore it and meshes block it, so hits report bone names. Give enemies the same treatment.
+**Collision**: custom trace channel **`Weapon`** (`ECC_GameTraceChannel1`, default Block). `ATHCharacter` makes capsules ignore it and meshes block it, so hits report bone names. The horror template's full body (the one other players see) had collision off; `UTHWeaponComponent` turns on queries for the bullet channel only on that body (`bBodyBlocksBullets`, 2026-11-05, found by `Functional.ShotDamage`), and the server keeps its bones updated even when nobody looks at it. Give enemies the same treatment.
 
 **Input**: if `WeaponMappingContext` is empty the component builds one at runtime — LMB fire, RMB aim, R reload, 1/2/3 slots, wheel cycle, B fire mode — at priority 1, above the template's `IMC_Default`. That makes RMB aim instead of the template's camera zoom while a weapon is held. Replace with real `IA_*`/`IMC_*` assets whenever you like (assign them on the component in `BP_FirstPersonCharacter`).
 

@@ -8,8 +8,11 @@ One-off editor Python scripts kept for re-use. They were written for a specific 
 
 Output is logged as warnings (`[TH ...]`) in `Saved/Logs/LetsSurviveTogether.log`. An exit code of 1 or 255 with a BINKA decoder ensure in the log is harmless.
 
+The automated tests have their own runner, `Scripts/run_tests.ps1` (see TESTING.md).
+
 | Script | What it does | Notes |
 |---|---|---|
+| `create_test_map.py` | Creates `/Game/Tests/Maps/L_FunctionalTests` for the play-session tests: a 100 m floor centred on the origin (top at Z = 0), three player starts 2 m apart facing +X, a light. | Re-run to rebuild it. The floor cube's pivot is at a corner, so the script centres it from its bounds and stops if it isn't centred. |
 | `import_g17.py` | Imports `SourceArt/G17_FPS_Pack/Glock 17/Glock17.fbx` to `/Game/Weapons/G17` with *Use T0 As Ref Pose*, then saves the folder. | Re-importing replaces the animations. After it, run `fix_g17_slide.py` and `reload_notifies.py` again. |
 | `setup_g17.py` | Imports the pack's textures, builds `MI_Glock/Glove/Hand`, sets up `DA_G17`, `BP_Weapon_G17` and the character loadout, then prints the reload timing. | Its muzzle offset is the old estimate; `reload_notifies.py` sets the measured one. |
 | `compare_bind_pose.py` | Imports the G17 without T0 to `/Game/Temp_G17Bind` and prints the bones whose rest pose differs from the T0 import. | Delete `/Game/Temp_G17Bind` afterwards. |

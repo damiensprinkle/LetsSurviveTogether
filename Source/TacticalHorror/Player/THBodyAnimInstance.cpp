@@ -1044,7 +1044,8 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	const float LoweredLeftTarget = bHasWeaponGrip && Held && Lowered && Lowered->bLeftHandOnWeapon && WeaponGrip.bHasGunFromRightHand && WeaponGrip.bLeftHand
 		&& !WeaponGrip.bLeftHandFollowsRight ? (1.0f - ReadyAlpha) * ActionHandsFree : 0.0f;
 	LoweredLeftAlpha = FullPoseActionWeight > 0.001f ? LoweredLeftTarget : FMath::FInterpConstantTo(LoweredLeftAlpha, LoweredLeftTarget, DeltaSeconds, 8.0f);
-	if ((HandIKAlpha > 0.001f || LoweredLeftAlpha > 0.001f) && bHasWeaponGrip)
+	// Held can be gone while the hands are still easing off a weapon (e.g. a switch seen over the network): no grip then
+	if ((HandIKAlpha > 0.001f || LoweredLeftAlpha > 0.001f) && bHasWeaponGrip && Held)
 	{
 		NewSnapshot.LoweredLeftWeight = LoweredLeftAlpha;
 		NewSnapshot.GunFromRightHand = WeaponGrip.GunFromRightHand;
