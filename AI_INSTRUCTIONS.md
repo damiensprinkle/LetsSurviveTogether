@@ -18,6 +18,7 @@ Read GDD.md (design), TECHNICAL_ARCHITECTURE.md (how it's built), ROADMAP.md and
 - Tuning goes in Data Assets, not hardcoded values.
 - Keep changes focused; one bounded feature per task. Avoid new dependencies/plugins without a reason.
 - Don't claim something works without compiling it. Say plainly what still needs an in-editor play test.
+- When a third-party package is added (Fab, Epic sample, download, template), add its row to `THIRD_PARTY_ASSETS.csv` in the same change: source, creator, license, link, location, use. Mark unknowns VERIFY rather than guessing.
 - After code or content changes, run the automated tests (`Scripts/run_tests.ps1`, editor closed; see TESTING.md) and report the result. When fixing a bug, add a test that would have caught it where practical.
 - List any Unreal Editor setup the developer must do.
 - Update the docs when architecture or design decisions change. Don't turn GDD suggestions into requirements silently.

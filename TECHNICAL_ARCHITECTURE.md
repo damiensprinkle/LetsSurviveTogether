@@ -6,7 +6,7 @@ Engine: **Unreal Engine 5.7.4** · Toolchain: Visual Studio 2026 (MSVC 14.44) ·
 
 | Source | What we took | Notes |
 |---|---|---|
-| `FPS_Horror_Template 5.7` (Patreon, auto-converted from 5.2) | **Everything** — this is the base. Character, interaction, doors, puzzles, notes, inspect, flashlight, night vision, footsteps, Demo map, MetaHuman Koda | Blueprint-only originally |
+| `FPS_Horror_Template 5.7` ("FPS Horror UE 5" by LetsMakeGame on Patreon, auto-converted from 5.2; license in `THIRD_PARTY_ASSETS.csv`) | **Everything** — this is the base. Character, interaction, doors, puzzles, notes, inspect, flashlight, night vision, footsteps, Demo map, MetaHuman Koda | Blueprint-only originally |
 | `UnrealFPSHorrorTemplate` (UE 5.7 First Person template, Horror variant) | `Characters/`, `FirstPerson/`, `Input/`, `Variant_Horror/`, missing `LevelPrototyping/` files | Modern first-person arms + anims, flickering horror light, sprint/stamina. It has **no gunplay** |
 | UE 5.7 engine template resources | `Content/Weapons/` (rifle, pistol, launcher meshes + fire sound) | Placeholder weapons; `Muzzle` socket |
 
@@ -62,6 +62,7 @@ Content/
 └── _Archive/Animations/      unused animations kept for later, by pack (Lyra, SampleAnimationPack, Mannequins, …)
 ```
 
+- Every third-party package (Fab, Epic samples, template, downloads) has a row in `THIRD_PARTY_ASSETS.csv`: source, creator, license, link, where it lives, whether it's used. Add the row when a pack is added; check licenses there before a release.
 - New packs go in `ThirdParty/<Pack>`: import there, or after adding from Fab move the folder in the editor (drag it, then right-click the folder → Fix Up Redirectors). Fab updates re-download into the pack's original folder.
 - Move content only inside the editor, never in Windows Explorer, and pick *Delete unreferenced redirectors* in Fix Up Redirectors. A few assets may fail to save at the old path ("Illegal reference to private object ... ThumbnailInfo"): their moved copy is fine, delete the stale old file once `content_verify.py` shows nothing refers to it. Then update hard-coded paths (`grep -r "/Game/"` in Source, Config, Scripts). Scripted moves (`cleanup_reorganize.py`) work for animations and plain assets but crashed the editor on Blueprints and maps; Python has no redirector fix-up (use the editor's, or `-run=ResavePackages -fixupredirects`).
 - C++ refers to content by soft path (loaded at spawn / game start), never with `ConstructorHelpers` on movable content: assets held by a class default can't be moved in the editor.
