@@ -14,7 +14,10 @@ public class TacticalHorror : ModuleRules
 			"EnhancedInput",
 			"Niagara",
 			"PhysicsCore",
-			"NetCore"
+			"NetCore",
+			// Enemies: AI controllers and navigation (Milestone 4)
+			"AIModule",
+			"NavigationSystem"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {

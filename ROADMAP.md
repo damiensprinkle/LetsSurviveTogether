@@ -10,11 +10,12 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 ## Now: the next few sessions, in order
 
 1. ✅ **Content cleanup** (2026-11-04/05, see *Content pipeline*): deleting, archiving, the folder moves and the animation renaming are done. Left from it: a new-gun checklist.
-2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 19 tests, about 200 s (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
+2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 20 tests, about 200 s (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
 3. ✅ **Two-player play test** (Milestone 1 exit; two PCs, 2026-11-09): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
 4. 🔧 **Test range** (2026-11-05: the Fab firing range imported as `Maps/L_FiringRange`, walkable, lit with `BP_OverheadLight`, with a ceiling, the template door and an empty room behind it; next spray targets; see TASKS.md *Where we left off*) (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil. Separate from the tests' own map (`/Game/Tests/Maps/L_FunctionalTests`).
 5. 🔧 **Hit feedback**: ✅ bullet holes by surface; ⬜ hit-confirm audio cue, blood.
-. **Enemy test map**: a small dark level with a navigation mesh for the first enemies (Milestone 4), also Milestone 3's dark test map.
+6. 🔧 **Doors and downed / revive** (Milestone 3), then enemies: ✅ the template's doors, key locks, keypad and valve door work in co-op (2026-11-07); ✅ downed rules decided (2026-11-09, Milestone 3); ⬜ block shooting while downed, play-test downed / revive.
+7. ✅ **Enemy test map** (2026-11-09): `/Game/Maps/L_EnemyTest`, a small dark level with a navigation mesh for the first enemies (Milestone 4), also Milestone 3's dark test map.
 8. **Settings menu, much better** (developer, 2026-11-09): rebindable keys first (real input assets), then graphics; see Milestone 6.
 
 Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting play-tested), crosshairs and ammo HUD, flashlights, third-person reload magazine, CS2 M4A4 spray.
@@ -92,7 +93,7 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - 🟡 Health and damage (`UTHHealthComponent`), friendly fire switch on the GameMode
 - 🔧 Audio: footsteps by movement mode, gun foley, settings menu volume sliders. ⬜ Footsteps by surface (Physical Materials, shared with bullet impacts), reverb zones, an ambience bed
 - ⬜ **Sanity** (GDD 7.2): a per-player sanity value (replicated to its owner); low sanity adds weapon sway and local-only hallucinations (sounds, shapes); restored by lit areas and nearby teammates (❓ drains and restores to decide). **No HUD bar:** shown on an in-world item, e.g. a smartwatch on the wrist with heart rate (raise the arm to look at it, first person and third person), or a journal (❓ which item). Tuning in a data asset.
-- ⬜ Environmental lighting pass for a dark test map
+- ⬜ Environmental lighting pass for a dark test map (a first dark test map exists: `L_EnemyTest`)
 - ⬜ **Exit:** players navigate a dark test map with their equipment and interact with objects
 
 ## Milestone 4: Enemies and AI

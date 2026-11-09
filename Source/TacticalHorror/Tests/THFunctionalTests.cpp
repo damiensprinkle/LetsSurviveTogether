@@ -2,6 +2,9 @@
 // in a play session and drive the real player: fire, reload, switch weapons, lights, damage. See TESTING.md.
 
 #include "Misc/AutomationTest.h"
+#include "NavigationPath.h"
+#include "NavigationSystem.h"
+#include "NavMesh/RecastNavMesh.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
@@ -267,6 +270,88 @@ bool FTHFunctionalWeaponsTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("Left mouse switches the flashlight off"), IsBeamVisible(GetWeapons()->GetCurrentWeapon()));
 	});
 
+	EndPlay(this);
+	return true;
+}
+
+// The enemy test map (build_enemy_test_map.py): players spawn on its floor, and the navigation mesh it builds at
+// runtime reaches every area, so enemies can get anywhere
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHEnemyTestMapTest, "TacticalHorror.Functional.EnemyTestMap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHEnemyTestMapTest::RunTest(const FString& Parameters)
+{
+	// Cell centres in the script's layout (4 m tiles), a little above the floor
+	static const auto Cell = [](double X, double Y) { return FVector(X * 400.4, Y * 400.4, 50.0); };
+	static const TArray<TPair<FString, FVector>> Places = {
+		{ TEXT("the hall"), Cell(4.5, 1.0) },
+		{ TEXT("the hall's far corner"), Cell(6.0, 0.0) },
+		{ TEXT("the side room"), Cell(0.5, 4.5) },
+		{ TEXT("the long corridor"), Cell(3.5, 4.0) },
+	};
+
+	StartPlay(this, TEXT("/Game/Maps/L_EnemyTest"));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(2.0));
+	Step([this]()
+	{
+		const ACharacter* Character = Cast<ACharacter>(GetPlayer());
+		TestTrue(TEXT("The player stands on the floor"), Character && Character->GetCharacterMovement()->IsMovingOnGround());
+		TestTrue(TEXT("The player starts in the start room"), Character && Character->GetActorLocation().X < 600.0 && Character->GetActorLocation().Y < 600.0); // cells (0..1, 0..1)
+	});
+	Step([this]()
+	{
+		UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetPlayWorld());
+		AddInfo(FString::Printf(TEXT("Navigation system %s, %d navigation data, %d bounds, building %d"), *GetNameSafe(Navigation),
+			Navigation ? Navigation->NavDataSet.Num() : -1, Navigation ? Navigation->GetNavigationBounds().Num() : -1,
+			Navigation ? Navigation->IsNavigationBuildInProgress() : -1));
+		if (Navigation)
+		{
+			for (const ANavigationData* Data : Navigation->NavDataSet)
+			{
+				const ARecastNavMesh* Recast = Cast<ARecastNavMesh>(Data);
+				AddInfo(FString::Printf(TEXT("Navigation data %s, runtime generation %d, tiles %d"), *GetNameSafe(Data),
+					Data ? (int32)Data->GetRuntimeGenerationMode() : -1, Recast ? Recast->GetNavMeshTilesCount() : -1));
+			}
+			FNavLocation OnMesh;
+			AddInfo(FString::Printf(TEXT("Player at %s, on the navmesh: %d; hall on it: %d"), *GetPlayer()->GetActorLocation().ToCompactString(),
+				Navigation->ProjectPointToNavigation(GetPlayer()->GetActorLocation(), OnMesh, FVector(100.0, 100.0, 300.0)),
+				Navigation->ProjectPointToNavigation(Cell(4.5, 1.0), OnMesh, FVector(100.0, 100.0, 300.0))));
+		}
+	});
+	// The navigation mesh is generated at runtime
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("navigation from the start room to every area"), 20.0, [this]()
+	{
+		UWorld* World = GetPlayWorld();
+		const FVector Start = GetPlayer()->GetActorLocation();
+		for (const TPair<FString, FVector>& Place : Places)
+		{
+			const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, Start, Place.Value);
+			if (!Path || !Path->IsValid() || Path->IsPartial())
+			{
+				return false;
+			}
+		}
+		return true;
+	}));
+	Step([this]()
+	{
+		UWorld* World = GetPlayWorld();
+		for (const TPair<FString, FVector>& Place : Places)
+		{
+			const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, GetPlayer()->GetActorLocation(), Place.Value);
+			AddInfo(FString::Printf(TEXT("Path to %s: %.0f m"), *Place.Key, Path ? Path->GetPathLength() / 100.0 : -1.0));
+		}
+		// Walls block it: from the hall's bottom row to the long corridor below it (a wall and an empty cell between) the
+		// way is round through the hall's south doorway, far longer than the straight line
+		const FVector Hall = Cell(4.0, 2.3);
+		const FVector Corridor = Cell(4.0, 3.8);
+		const UNavigationPath* Around = UNavigationSystemV1::FindPathToLocationSynchronously(World, Hall, Corridor);
+		AddInfo(FString::Printf(TEXT("Hall to the corridor below it: %.1f m round, %.1f m straight"), Around ? Around->GetPathLength() / 100.0 : -1.0,
+			FVector::Dist2D(Hall, Corridor) / 100.0));
+		TestTrue(TEXT("Paths go round walls through the doorways, not through them"),
+			Around && !Around->IsPartial() && Around->GetPathLength() > 1.6 * FVector::Dist2D(Hall, Corridor));
+	});
 	EndPlay(this);
 	return true;
 }

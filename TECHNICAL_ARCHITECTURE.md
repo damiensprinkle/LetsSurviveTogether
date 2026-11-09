@@ -127,6 +127,12 @@ Content/
 
 **Movement speed**: `UTHCharacterMovementComponent::GetMaxSpeed()` multiplies whatever the Blueprint sets (walk/sprint/crouch) by the weapon/ADS/downed multiplier.
 
+### Navigation
+- The project's navigation voxels are 10 cm (`Config/DefaultEngine.ini`, RecastNavMesh), not the default 19: navigation keeps an agent's radius (35 cm) from walls, rounded up to whole voxels, and the default closed the range kit's 106 cm doorways.
+- Navigation only sees simple collision. The range kit's pieces (floors, walls, crates) only have complex collision, so levels built from them need invisible boxes for navigation (`build_enemy_test_map.py` adds them).
+- `L_EnemyTest`'s navigation mesh is static, built by its script and saved with the level; a full rebuild while playing took over 20 s. Use Dynamic for levels with doors or moving obstacles.
+- Editor-only script helpers in C++: `Debug/UTHEditorScriptLibrary` (shape a volume's box brush, build navigation and probe it).
+
 ### Bullet holes — `UTHImpactSurfaces`
 One shared data asset, `DA_ImpactSurfaces` (`UTHWeaponData::ImpactSurfaces`), maps a hit's surface type (from the hit material's Physical Material) to a list of decals; each shot picks one at random, sized by the weapon's `ImpactDecalSize`. The server's trace finds the surface and sends it in `MulticastShotEffects`, so every machine draws the same set; a client's predicted hole uses its own trace. Surfaces without their own set use Default. Surface types (Project Settings, Physics): Concrete, Dirt, Wood, Metal, Plaster, Paper. Physical Materials: `PM_Concrete`, `PM_Wood`, `PM_Dirt` (template, `Template/LevelPrototyping/PhysicMAT`) and `PM_Metal`, `PM_Plaster`, `PM_Paper` (`Effects/PhysicalMaterials`). To tag a surface: set the Physical Material on its material (every mesh using it), or *Phys Material Override* under Collision on one placed actor (bullets trace simple collision, which the override covers). Physical Materials also pick footstep sounds. In `L_FiringRange` only the targets are tagged (Paper, by `tag_range_surfaces.py`); everything else is Default, concrete holes.
 
