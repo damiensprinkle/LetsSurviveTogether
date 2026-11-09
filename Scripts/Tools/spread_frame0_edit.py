@@ -10,12 +10,12 @@ Back up the files first. Run headless with the editor closed (see README.md), th
 """
 import unreal
 
-RIFLE = "/Game/ThirdParty/SampleAnimationPack/Animations/Rifle/"
-EDITED = RIFLE + "AS_F_Rifle_Idle_01"
-ORIGINAL = "/Game/TempOrigIdle/AS_F_Rifle_Idle_01"
-ALSO = [RIFLE + "AS_F_Rifle_Walk_F_Loop", RIFLE + "AS_F_Rifle_Walk_B_Loop",
-        RIFLE + "AS_F_Rifle_Walk_L_Loop", RIFLE + "AS_F_Rifle_Walk_R_Loop"]
-REPORT_ONLY = [(RIFLE + "AS_F_ADS_Rifle_Idle_01", "/Game/TempOrigIdle/AS_F_ADS_Rifle_Idle_01")]
+RIFLE = "/Game/Animations/ThirdPerson/M4/"
+EDITED = RIFLE + "A_TP_M4_Lowered_Idle"
+ORIGINAL = "/Game/TempOrigIdle/A_TP_M4_Lowered_Idle"
+ALSO = [RIFLE + "A_TP_M4_Lowered_Walk_F", RIFLE + "A_TP_M4_Lowered_Walk_B",
+        RIFLE + "A_TP_M4_Lowered_Walk_L", RIFLE + "A_TP_M4_Lowered_Walk_R"]
+REPORT_ONLY = [(RIFLE + "A_TP_M4_Raised_Idle", "/Game/TempOrigIdle/A_TP_M4_Raised_Idle")]
 AL = unreal.AnimationLibrary
 eal = unreal.EditorAssetLibrary
 

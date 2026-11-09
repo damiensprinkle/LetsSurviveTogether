@@ -1,7 +1,8 @@
 """Retargets Lyra's UE4-mannequin pistol hip-fire idle onto the UE5 mannequin, for the pistol's lowered carry.
 
   Source: /Game/ThirdParty/Lyra/Characters/Mannequin_UE4/Animations/Locomotion/Pistol/MM_Pistol_Idle_Hipfire_UE4
-  Result: /Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Idle_Hipfire (overwritten if it exists)
+  Result: /Game/Animations/ThirdPerson/G17/A_TP_G17_Lowered_Idle (overwritten if it exists: that LOSES the developer's
+  hand pose keyed in it since. Retarget to another name and compare first.)
 Uses Lyra's RTG_UE4Manny_UE5Manny. The batch retargeter needs Slate, so it can't run in the headless commandlet; run
 it in a full editor drawn off-screen, which quits when done (editor closed first; copy the script to a file name that
 doesn't start with "r", since "\\r" in the -ExecutePythonScript path is read as an escape):
@@ -15,7 +16,7 @@ SOURCE = LYRA4 + "Animations/Locomotion/Pistol/MM_Pistol_Idle_Hipfire_UE4"
 SOURCE_MESH = LYRA4 + "Meshes/SK_Mannequin"
 TARGET_MESH = "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"
 RETARGETER = LYRA4 + "Meshes/RTG_UE4Manny_UE5Manny"
-DEST = "/Game/Characters/Mannequins/Anims/Pistol/MM_Pistol_Idle_Hipfire"
+DEST = "/Game/Animations/ThirdPerson/G17/A_TP_G17_Lowered_Idle"
 
 
 def out(msg):

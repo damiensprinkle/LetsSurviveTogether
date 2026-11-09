@@ -26,7 +26,8 @@ for b, t in BIND_LOCAL.items():
     # Skin = inv(Ref) * Anim. Want inv(T0) * Anim' == inv(Bind) * Anim  =>  Anim' = T0 * inv(Bind) * Anim
     fix[b] = M.compose_transforms(t0_cs, M.invert_transform(bind_cs))
 opts = unreal.AnimPoseEvaluationOptions()
-for n in ["Idle", "Draw", "Fire", "Holster", "Reload", "ReloadEmpty"]:
+# Run straight after import_g17.py, before organize_animations.py moves them to Animations/A_FP_G17_* (names as imported)
+for n in ["Idle", "Draw", "Fire", "Reload", "ReloadEmpty"]:
     a = eal.load_asset(G + "Glock17_Anim_" + n)
     keys = unreal.AnimationLibrary.get_num_keys(a)
     length = a.get_play_length()

@@ -2,7 +2,7 @@
 
   Hand flashlight (ATHHandFlashlight, key 3 once picked up):
     /Game/Weapons/Data/DA_HandFlashlight          weapon data: the FP Flashlight Animations pack's arms animations
-    /Game/Characters/BodyAnimSets/DA_Body_Flashlight  what other players see: Lyra's flashlight poses
+    /Game/Characters/BodyAnimSets/DA_Body_HandFlashlight  what other players see: Lyra's flashlight poses (our copies)
   Weapon light (L, under the barrel):
     DA_M4 / DA_G17 Weapon Light section: the Fab "FREE Tactical Flashlight" mesh, placed from each gun's muzzle bone
 
@@ -14,8 +14,8 @@ import unreal
 eal = unreal.EditorAssetLibrary
 DATA = "/Game/Weapons/Data"
 BODY = "/Game/Characters/BodyAnimSets"
-FP = "/Game/ThirdParty/FPFlashlightAnims/Animations/"
-LYF = "/Game/ThirdParty/Lyra/Characters/Mannequin/Animations/Locomotion/FlashLight/"
+FP = "/Game/Weapons/HandFlashlight/Animations/"
+TPF = "/Game/Animations/ThirdPerson/HandFlashlight/"
 CLICK = "/Game/Audio/Cue/FlashlightButton_Cue"
 LIGHT_MESH = "/Game/ThirdParty/TacticalFlashLight/SM_Attach_Flashlight_01"
 
@@ -50,20 +50,20 @@ def frame_along(forward, up):
 
 
 # ---- Third-person body set: Lyra's flashlight poses (same skeleton as the body) ----
-body = get_or_create(BODY, "DA_Body_Flashlight", unreal.THBodyAnimSet)
+body = get_or_create(BODY, "DA_Body_HandFlashlight", unreal.THBodyAnimSet)
 unarmed = load(BODY + "/DA_Body_Unarmed")
 for prop in ["walk_backward", "walk_left", "walk_right", "crouch_idle", "crouch_forward", "crouch_backward",
              "crouch_left", "crouch_right", "falling"]:
     body.set_editor_property(prop, None)
-body.set_editor_property("idle", load(LYF + "A_Flashlight_CC"))
-body.set_editor_property("walk_forward", load(LYF + "A_RH_Flashlight_T2_Walk_Fwd"))
+body.set_editor_property("idle", load(TPF + "A_TP_HandFlashlight_Idle"))
+body.set_editor_property("walk_forward", load(TPF + "A_TP_HandFlashlight_Walk_F"))
 # Other directions and crouching borrow the unarmed legs; this keeps the flashlight held on the upper body
-body.set_editor_property("upper_body_pose", load(LYF + "A_Flashlight_CC"))
+body.set_editor_property("upper_body_pose", load(TPF + "A_TP_HandFlashlight_Idle"))
 body.set_editor_property("hand_ik_weight", 0.0)
-# Draw: the pistol draw (one hand from the hip); the flashlight shows once the hand is up, as with the guns
-pistol = load(BODY + "/DA_Body_Pistol")
+# Draw: its own copy of the pistol draw (one hand from the hip); the flashlight shows once the hand is up, as with the guns
+body.set_editor_property("equip", load(TPF + "A_TP_HandFlashlight_Equip"))
+pistol = load(BODY + "/DA_Body_G17")
 if pistol:
-    body.set_editor_property("equip", pistol.get_editor_property("equip"))
     body.set_editor_property("equip_reveal_fraction", pistol.get_editor_property("equip_reveal_fraction"))
     body.set_editor_property("action_blend_time", pistol.get_editor_property("action_blend_time"))
 body.set_editor_property("upper_body_yaw", 0.0)
@@ -72,12 +72,12 @@ if unarmed:
     body.set_editor_property("aim_offset", unarmed.get_editor_property("aim_offset"))
     body.set_editor_property("aim_offset_pitch_at_look_up", unarmed.get_editor_property("aim_offset_pitch_at_look_up"))
 eal.save_loaded_asset(body)
-out("DA_Body_Flashlight saved")
+out("DA_Body_HandFlashlight saved")
 
 # ---- Hand flashlight weapon data ----
 data = get_or_create(DATA, "DA_HandFlashlight", unreal.THWeaponData)
-data.set_editor_property("idle_animation", load(FP + "AS_Flashlight_Idle"))
-data.set_editor_property("equip_animation", load(FP + "AS_Flashlight_Eqiup"))
+data.set_editor_property("idle_animation", load(FP + "A_FP_HandFlashlight_Idle"))
+data.set_editor_property("equip_animation", load(FP + "A_FP_HandFlashlight_Equip"))
 data.set_editor_property("fire_animation", None)
 data.set_editor_property("reload_animation", None)
 data.set_editor_property("reload_empty_animation", None)

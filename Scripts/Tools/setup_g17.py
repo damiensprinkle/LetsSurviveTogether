@@ -53,6 +53,7 @@ DA = "/Game/Weapons/Data/DA_G17"
 if not eal.does_asset_exist(DA):
     eal.duplicate_asset("/Game/Weapons/Data/DA_Pistol", DA)
 da = eal.load_asset(DA)
+# Names as imported; organize_animations.py then moves them to /Game/Weapons/G17/Animations/A_FP_G17_* and repoints DA_G17
 anim = lambda n: eal.load_asset(G + "Glock17_Anim_" + n)
 da.set_editor_property("display_name", "G17")
 da.set_editor_property("magazine_size", 17)

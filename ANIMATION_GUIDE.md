@@ -8,7 +8,7 @@ A working reference for fixing how characters look **to other players**: body an
 
 Each frame, for every character, four things happen in this order:
 
-1. **Body animation.** The legs walk or crouch, and the upper body plays the held weapon's aiming pose. These come from a *body anim set* data asset (`DA_Body_Rifle`, `DA_Body_Pistol`, `DA_Body_Unarmed`).
+1. **Body animation.** The legs walk or crouch, and the upper body plays the held weapon's aiming pose. These come from a *body anim set* data asset (one per gun: `DA_Body_M4`, `DA_Body_G17`, `DA_Body_HandFlashlight`, plus `DA_Body_Unarmed`).
 2. **Weapon placement.** The gun is placed **from the head**: its grip goes to a point in front of and below the head (the *anchor offset*), pointing where the player aims. This keeps a rifle's stock in the shoulder whatever the arms do.
 3. **Hand IK.** Both arms are bent so the hands land on the gun's grips. Each hand **copies the first-person hand** on that gun: palm in the same place, turned the same way, and every finger pointing the same way, so the fingers wrap the grip and the index finger sits where it does in first person. The elbows are forced to point down and slightly out.
 4. **Hand pose** (optional, normally empty). If the body set has one, the finger bones are first copied from one frame of an animation. With *Match Rig Hands* on (the default) the copied first-person fingers override it.
@@ -43,15 +43,22 @@ During **reload, equip and fire**, the IK fades out and the gun rides the right 
 | Third Person Rotation Offset | Tilts the whole gun away from the aim. Rarely needed. | degrees |
 | Third Person Anchor Bone | The bone the gun is placed from (`head`) | |
 
-**Body anim sets:** `Content/Characters/BodyAnimSets/DA_Body_Rifle`, `DA_Body_Pistol`, `DA_Body_Unarmed`.
+**Body anim sets:** `Content/Characters/BodyAnimSets/`: `DA_Body_M4` and `DA_Body_M4_Lowered`, `DA_Body_G17` and `DA_Body_G17_Lowered`, `DA_Body_HandFlashlight`, `DA_Body_Unarmed`.
+
+**Naming and folders** (2026-11-05, `Scripts/Tools/organize_animations.py`; the test `Data.AnimationNaming` checks it):
+
+- First person: `Content/Weapons/<Gun>/Animations/A_FP_<Gun>_<Action>`, e.g. `A_FP_M4_Reload_Empty`, `A_FP_HandFlashlight_Inspect`.
+- Third person: `Content/Animations/ThirdPerson/<Gun>/A_TP_<Gun>_<State>_<Action>`, e.g. `A_TP_M4_Lowered_Walk_F`, `A_TP_G17_Raised_Idle`, `A_TP_M4_HandPose`; aim offsets `AO_TP_<Gun>` with their poses `A_TP_<Gun>_AO_*`. Unarmed is `A_TP_Unarmed_*`.
+- These are **our copies**. The packs (`Content/ThirdParty`) stay as they came, so edit the `A_TP_` / `A_FP_` copy, never the pack's original. To use a new pack animation, duplicate it into the gun's folder with this naming, then point the set or weapon data at the copy.
+- Each gun has its own set, so tweaking the M4's walk doesn't change another rifle's.
 
 | Section | Settings |
 |---|---|
 | Locomotion | Idle, Walk Forward/Backward/Left/Right, Crouch Idle, Crouch Forward/Backward/Left/Right, Falling. Empty slots fall back to `DA_Body_Unarmed`. |
-| Upper Body | Upper Body Pose (the aiming pose layered on the torso and arms), Aim Offset (looking up and down), **Upper Body Yaw** (turns the torso about the vertical, + = right; the rifle's aiming animations stand bladed ~28° right, so `DA_Body_Rifle` uses −28 to square up; the neck turns back so the head still faces forward). Live: `th.UpperBodyYawTune -5` adds degrees. |
+| Upper Body | Upper Body Pose (the aiming pose layered on the torso and arms), Aim Offset (looking up and down), **Upper Body Yaw** (turns the torso about the vertical, + = right; the rifle's aiming animations stand bladed ~28° right, so `DA_Body_M4` uses −28 to square up; the neck turns back so the head still faces forward). Live: `th.UpperBodyYawTune -5` adds degrees. |
 | Actions | Fire, Reload, Equip. **Equip Reveal Fraction** (0.6): the gun stays hidden for that share of the Equip animation and appears in the hand as the draw brings it forward (Lyra's draw otherwise swings the gun behind the shoulder). Raise it if the gun appears too early, lower it if too late. Test off-screen with `th.AutoSwitchAfter 3`. |
 | Hand IK | Hand IK Weight (0 = off, 1 = full), arm bone names |
-| Lowered | **Lowered Set** (another body set used while the weapon is down: its idle and walks), **Ready Hold Time** (seconds the weapon stays up after the last shot or letting go of aim; rifle 7), **Raise Time** / **Lower Time**. Aiming or shooting raises it. Lowered, the gun sits in the lowered animation's right hand and the left hand is pulled onto the handguard (nudge it with the weapon's Left Hand Offset / Rotation, same as when aiming); to change how it's carried, swap the Lowered Set's animations. Rifle: `DA_Body_Rifle_Lowered` (`AS_F_Rifle_Idle_01`, `AS_F_Rifle_Walk_*`). Pistol: `DA_Body_Pistol_Lowered` (`MM_Pistol_Idle_Hipfire`, retarget of Lyra's UE4 hip-fire idle; walks on the unarmed legs with that pose on top). |
+| Lowered | **Lowered Set** (another body set used while the weapon is down: its idle and walks), **Ready Hold Time** (seconds the weapon stays up after the last shot or letting go of aim; rifle 7), **Raise Time** / **Lower Time**. Aiming or shooting raises it. Lowered, the gun sits in the lowered animation's right hand and the left hand is pulled onto the handguard (nudge it with the weapon's Left Hand Offset / Rotation, same as when aiming); to change how it's carried, swap the Lowered Set's animations. M4: `DA_Body_M4_Lowered` (`A_TP_M4_Lowered_Idle`, `A_TP_M4_Lowered_Walk_*`). G17: `DA_Body_G17_Lowered` (`A_TP_G17_Lowered_Idle`, retarget of Lyra's UE4 hip-fire idle; walks on the unarmed legs with that pose on top). |
 | Hand Pose | **Hand Pose** (animation), **Hand Pose Time** (which frame, in seconds), **Hand Pose Right / Left** (which hands' fingers to copy) |
 
 **Current values (2026-11-03)**
@@ -165,9 +172,9 @@ The commands above can't bend fingers. Fingers are posed in the animation editor
 ### Make the pose
 
 1. In the Content Browser, open the folder of a pose close to what you want:
-   - pistol: `Content/Characters/Mannequins/Anims/Pistol/` → `MF_Pistol_Idle_ADS`
-   - rifle: `Content/ThirdParty/SampleAnimationPack/Animations/Rifle/` → `AS_F_ADS_Rifle_Idle_01`
-2. Right-click it → **Duplicate**, and name the copy after the hand, e.g. `AS_Pistol_HandPose`. Never edit the original.
+   - pistol: `Content/Animations/ThirdPerson/G17/` → `A_TP_G17_Raised_Idle`
+   - rifle: `Content/Animations/ThirdPerson/M4/` → `A_TP_M4_Raised_Idle`
+2. Right-click it → **Duplicate**, and name the copy after the hand, e.g. `A_TP_G17_HandPose`. Never edit the original.
 3. Open the copy. Pause it and scrub to frame 0.
 4. In the **Skeleton Tree** panel on the left, use the search box to find the finger bones (below). If they're hidden, open the panel's settings (gear or filter icon) and choose **Show All Bones**.
 5. Select a bone, press **E** for the rotate tool, and switch the gizmo to **local space** with the globe/cube icon at the top right of the viewport. Drag the ring that bends the joint.
@@ -190,7 +197,7 @@ Trigger finger in the guard: straighten `index_01_r` a little, then bend `index_
 
 ### Use the pose
 
-1. Open `DA_Body_Pistol` (or `DA_Body_Rifle`) → **Hand Pose** section:
+1. Open `DA_Body_G17` (or `DA_Body_M4`) → **Hand Pose** section:
    - **Hand Pose:** your new animation
    - **Hand Pose Time:** `0` (or the second of the frame you posed)
    - **Hand Pose Right:** on (right hand's fingers)
@@ -208,8 +215,8 @@ Changes to data assets and animations usually show up while Play is running. If 
 
 To try a different aiming pose or walk:
 
-1. Open `DA_Body_Rifle` / `DA_Body_Pistol`.
-2. Change the slot, e.g. **Upper Body Pose** or **Walk Forward**, to another animation for the **UE5 mannequin** skeleton. Good sources in the project:
+1. Open the gun's set, e.g. `DA_Body_M4` / `DA_Body_G17`.
+2. Change the slot, e.g. **Upper Body Pose** or **Walk Forward**, to another animation for the **UE5 mannequin** skeleton. Good sources in the project (duplicate the one you pick into `Content/Animations/ThirdPerson/<Gun>/` as `A_TP_<Gun>_<State>_<Action>` and use the copy):
    - `Content/ThirdParty/SampleAnimationPack/Animations/Rifle/`: rifle idles, walks, aims (female, `AS_F_*`)
    - `Content/Characters/Mannequins/Anims/Rifle/` and `/Pistol/`: UE5 template
    - `Content/ThirdParty/Lyra/Characters/Mannequin/Animations/`: Lyra (male, `MM_*`). The `Mannequin_UE4` folders are for the old skeleton; avoid them.

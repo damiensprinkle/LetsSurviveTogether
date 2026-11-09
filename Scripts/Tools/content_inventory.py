@@ -17,7 +17,7 @@ ROOTS = [
     "/Game/Weapons/Data/DA_HandFlashlight",                 # ATHHandFlashlight defaults
     "/Game/ThirdParty/FPFlashlightAnims/Demo/Player/FirstPersonArms/Character/Mesh/SK_Mannequin_Arms",
     "/Game/ThirdParty/FPFlashlightAnims/Mesh/SM_Flashlight",
-    "/Game/ThirdParty/FPFlashlightAnims/Animations/AS_Flashlight_Inspection",
+    "/Game/Weapons/HandFlashlight/Animations/A_FP_HandFlashlight_Inspect",
 ] + ["/Game/UI/Crosshairs/T_CH00%d" % i for i in range(1, 9)]
 
 MAPS = ["Demo", "Maps/MainMenu"]
