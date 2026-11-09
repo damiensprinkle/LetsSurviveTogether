@@ -3,12 +3,22 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Misc/ConfigCacheIni.h"
 
 void UTHAudioSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	// The Gunplay slider was called Gunshots: keep a player's old setting
+	float OldGunshotVolume = 1.0f;
+	float Ignored = 0.0f;
+	const FString Section = GetClass()->GetPathName();
+	if (!GConfig->GetFloat(*Section, TEXT("GunplayVolume"), Ignored, GGameUserSettingsIni)
+		&& GConfig->GetFloat(*Section, TEXT("GunshotVolume"), OldGunshotVolume, GGameUserSettingsIni))
+	{
+		GunplayVolume = OldGunshotVolume;
+	}
 	MasterVolume = FMath::Clamp(MasterVolume, 0.0f, 1.0f);
-	GunshotVolume = FMath::Clamp(GunshotVolume, 0.0f, 1.0f);
+	GunplayVolume = FMath::Clamp(GunplayVolume, 0.0f, 1.0f);
 	ApplyMasterVolume(MasterVolume);
 }
 
@@ -26,9 +36,9 @@ void UTHAudioSettingsSubsystem::SetMasterVolume(float Volume)
 	ApplyMasterVolume(MasterVolume);
 }
 
-void UTHAudioSettingsSubsystem::SetGunshotVolume(float Volume)
+void UTHAudioSettingsSubsystem::SetGunplayVolume(float Volume)
 {
-	GunshotVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
+	GunplayVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
 }
 
 void UTHAudioSettingsSubsystem::SaveSettings()
@@ -36,12 +46,12 @@ void UTHAudioSettingsSubsystem::SaveSettings()
 	SaveConfig();
 }
 
-float UTHAudioSettingsSubsystem::GetGunshotVolumeFor(const UObject* WorldContext)
+float UTHAudioSettingsSubsystem::GetGunplayVolumeFor(const UObject* WorldContext)
 {
 	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
 	const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
 	const UTHAudioSettingsSubsystem* Settings = GameInstance ? GameInstance->GetSubsystem<UTHAudioSettingsSubsystem>() : nullptr;
-	return Settings ? Settings->GunshotVolume : 1.0f;
+	return Settings ? Settings->GunplayVolume : 1.0f;
 }
 
 void UTHAudioSettingsSubsystem::ApplyMasterVolume(float Volume) const

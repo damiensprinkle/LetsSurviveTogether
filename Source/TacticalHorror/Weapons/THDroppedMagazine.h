@@ -36,5 +36,8 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USoundBase> DropSound;
 
+	/** A reload sound: 0.9 since the developer turned reload sounds down by 10% (2026-11-09). */
+	static constexpr float DropVolume = 0.9f;
+
 	bool bPlayedSound = false;
 };

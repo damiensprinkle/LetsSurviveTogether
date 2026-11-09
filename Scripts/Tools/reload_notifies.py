@@ -13,29 +13,30 @@ def wave(name):
     raise RuntimeError("missing " + name)
 
 # (event time in the animation, clip, ms into the clip where the hit we align is, volume, pitch)
+# Reload volumes were 1.0 (slide lock 0.9) until the developer turned reload sounds down 10% on 2026-11-09.
 # Hit times are from wav_hits.ps1. The G17 uses the FreeWeaponSFX handgun set (its gunshots too, below).
 # G17 bones (relative to main_j): mag2_j is the NEW magazine, it comes in from off-screen and seats at 1.46-1.48 s.
 # mag1_j is the old one: it leaves the grip at ~0.66 s, and at ~1.9-2.0 s it is moved off-screen (not a sound event).
 # Draw: foley right as the draw starts (a notify at exactly 0 can be skipped, hence 0.02).
 plans = {
-    "/Game/Weapons/M4_T0/M4_Anim_Draw": [
+    "/Game/Weapons/M4/Animations/A_FP_M4_Equip": [
         (0.02, "sfx_wpn_ar_foley_aim_01", 0, 1.0, 1.0)],
-    "/Game/Weapons/G17/Glock17_Anim_Draw": [
+    "/Game/Weapons/G17/Animations/A_FP_G17_Equip": [
         (0.02, "sfx_wpn_hgn_foley_aim_01", 0, 1.0, 1.0)],
-    "/Game/Weapons/M4_T0/M4_Anim_Reload": [
-        (0.83, "Rifle_PullOutTheClip_02_Wav", 110, 1.0, 1.0),
-        (2.00, "Rifle_Insert_The_Clip_06_Wav", 150, 1.0, 1.0)],
-    "/Game/Weapons/M4_T0/M4_Anim_Reload_Empty": [
-        (0.85, "Rifle_PullOutTheClip_02_Wav", 110, 1.0, 1.0),
-        (2.02, "Rifle_Insert_The_Clip_06_Wav", 150, 1.0, 1.0),
-        (2.62, "Rifle_Shutter_07_Wav", 350, 1.0, 1.0)],
-    "/Game/Weapons/G17/Glock17_Anim_Reload": [
-        (0.66, "sfx_wpn_hgn_reload_02_magOut", 80, 1.0, 1.0),
-        (1.46, "sfx_wpn_hgn_reload_04_magIn", 100, 1.0, 1.0)],
-    "/Game/Weapons/G17/Glock17_Anim_ReloadEmpty": [
-        (0.66, "sfx_wpn_hgn_reload_02_magOut", 80, 1.0, 1.0),
-        (1.46, "sfx_wpn_hgn_reload_04_magIn", 100, 1.0, 1.0),
-        (1.91, "sfx_wpn_hgn_reload_01_slideLock", 150, 0.9, 1.0)],
+    "/Game/Weapons/M4/Animations/A_FP_M4_Reload": [
+        (0.83, "Rifle_PullOutTheClip_02_Wav", 110, 0.9, 1.0),
+        (2.00, "Rifle_Insert_The_Clip_06_Wav", 150, 0.9, 1.0)],
+    "/Game/Weapons/M4/Animations/A_FP_M4_Reload_Empty": [
+        (0.85, "Rifle_PullOutTheClip_02_Wav", 110, 0.9, 1.0),
+        (2.02, "Rifle_Insert_The_Clip_06_Wav", 150, 0.9, 1.0),
+        (2.62, "Rifle_Shutter_07_Wav", 350, 0.9, 1.0)],
+    "/Game/Weapons/G17/Animations/A_FP_G17_Reload": [
+        (0.66, "sfx_wpn_hgn_reload_02_magOut", 80, 0.9, 1.0),
+        (1.46, "sfx_wpn_hgn_reload_04_magIn", 100, 0.9, 1.0)],
+    "/Game/Weapons/G17/Animations/A_FP_G17_Reload_Empty": [
+        (0.66, "sfx_wpn_hgn_reload_02_magOut", 80, 0.9, 1.0),
+        (1.46, "sfx_wpn_hgn_reload_04_magIn", 100, 0.9, 1.0),
+        (1.91, "sfx_wpn_hgn_reload_01_slideLock", 150, 0.81, 1.0)],
 }
 TRACK = "WeaponSound"
 for path, events in plans.items():

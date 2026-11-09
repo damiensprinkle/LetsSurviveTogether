@@ -3,6 +3,8 @@
 #include "Weapons/THWeaponComponent.h"
 #include "Weapons/THShellCasing.h"
 #include "Weapons/THDroppedMagazine.h"
+#include "Weapons/THImpactSurfaces.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Player/THBodyAnimInstance.h"
 #include "Player/THBodyAnimSet.h"
 #include "Settings/THAudioSettingsSubsystem.h"
@@ -972,7 +974,7 @@ void ATHWeaponBase::HandleFiring()
 		bWantsToFire = false;
 		if (WeaponData->DryFireSound)
 		{
-			UGameplayStatics::PlaySoundAtLocation(this, WeaponData->DryFireSound, GetActorLocation());
+			UGameplayStatics::PlaySoundAtLocation(this, WeaponData->DryFireSound, GetActorLocation(), UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this));
 		}
 		StartReload();
 		return;
@@ -1026,7 +1028,7 @@ void ATHWeaponBase::FireShot()
 		const FVector Direction = ComputeShotDirection(ViewRotation, SprayIndex, ShotNumber);
 		if (TraceShot(ViewLocation, Direction, Hit))
 		{
-			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal);
+			PlayImpactEffects(Hit.ImpactPoint, Hit.ImpactNormal, UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()));
 		}
 
 		ServerFire(ViewLocation, ViewRotation, SprayIndex, ShotNumber);
@@ -1239,10 +1241,11 @@ void ATHWeaponBase::ProcessServerShot(const FVector& ViewLocation, const FRotato
 	}
 
 	const FVector ImpactPoint = bHit ? Hit.ImpactPoint : Origin + Direction * WeaponData->MaxRange;
-	MulticastShotEffects(ImpactPoint, Hit.ImpactNormal, bHit);
+	const uint8 Surface = bHit ? (uint8)UPhysicalMaterial::DetermineSurfaceType(Hit.PhysMaterial.Get()) : (uint8)SurfaceType_Default;
+	MulticastShotEffects(ImpactPoint, Hit.ImpactNormal, bHit, Surface);
 }
 
-void ATHWeaponBase::MulticastShotEffects_Implementation(FVector_NetQuantize ImpactPoint, FVector_NetQuantizeNormal ImpactNormal, bool bHit)
+void ATHWeaponBase::MulticastShotEffects_Implementation(FVector_NetQuantize ImpactPoint, FVector_NetQuantizeNormal ImpactNormal, bool bHit, uint8 Surface)
 {
 	// The shooter already played these when firing
 	if (IsLocallyControlledOwner() || GetNetMode() == NM_DedicatedServer)
@@ -1250,7 +1253,7 @@ void ATHWeaponBase::MulticastShotEffects_Implementation(FVector_NetQuantize Impa
 		// Except the listen-server host's own impact, which wasn't predicted separately
 		if (HasAuthority() && IsLocallyControlledOwner() && bHit)
 		{
-			PlayImpactEffects(ImpactPoint, ImpactNormal);
+			PlayImpactEffects(ImpactPoint, ImpactNormal, Surface);
 		}
 		return;
 	}
@@ -1258,7 +1261,7 @@ void ATHWeaponBase::MulticastShotEffects_Implementation(FVector_NetQuantize Impa
 	PlayFireEffects();
 	if (bHit)
 	{
-		PlayImpactEffects(ImpactPoint, ImpactNormal);
+		PlayImpactEffects(ImpactPoint, ImpactNormal, Surface);
 	}
 }
 
@@ -1299,7 +1302,8 @@ void ATHWeaponBase::OnRep_IsReloading()
 		{
 			if (WeaponData->ReloadSound)
 			{
-				UGameplayStatics::SpawnSoundAttached(WeaponData->ReloadSound, Mesh);
+				UGameplayStatics::SpawnSoundAttached(WeaponData->ReloadSound, Mesh, NAME_None, FVector::ZeroVector, EAttachLocation::KeepRelativeOffset,
+					false, UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this));
 			}
 
 			// Ammo only replicates to the owner, so other players always see the regular reload
@@ -1347,7 +1351,7 @@ void ATHWeaponBase::PlayFireEffects()
 
 		const FVector2D& Pitch = WeaponData->FireSoundPitchRange;
 		LastFireAudio = UGameplayStatics::SpawnSoundAtLocation(this, WeaponData->FireSounds[Index], Muzzle.GetLocation(), FRotator::ZeroRotator,
-			UTHAudioSettingsSubsystem::GetGunshotVolumeFor(this), FMath::FRandRange(Pitch.X, Pitch.Y), 0.0f, nullptr, WeaponData->FireSoundConcurrency);
+			UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this), FMath::FRandRange(Pitch.X, Pitch.Y), 0.0f, nullptr, WeaponData->FireSoundConcurrency);
 	}
 
 	if (WeaponData->MuzzleFlash)
@@ -1531,7 +1535,7 @@ void ATHWeaponBase::PlayWeaponAnimation(UAnimSequenceBase* Animation)
 	}
 }
 
-void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& Normal)
+void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& Normal, uint8 Surface)
 {
 	if (!WeaponData)
 	{
@@ -1543,14 +1547,27 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, WeaponData->ImpactEffect, Location, Normal.Rotation());
 	}
 
-	if (WeaponData->ImpactDecal && WeaponData->ImpactDecalSize > 0.0f)
+	UMaterialInterface* DecalMaterial = WeaponData->ImpactSurfaces
+		? WeaponData->ImpactSurfaces->PickDecal((EPhysicalSurface)Surface) : WeaponData->ImpactDecal.Get();
+	if (DecalMaterial && WeaponData->ImpactDecalSize > 0.0f)
 	{
 		// Decals project along their X axis: into the surface, spun randomly so holes don't repeat
 		FRotator Rotation = (-Normal).Rotation();
 		Rotation.Roll = FMath::FRandRange(0.0f, 360.0f);
 		const float HalfSize = WeaponData->ImpactDecalSize * 0.5f;
-		if (UDecalComponent* Decal = UGameplayStatics::SpawnDecalAtLocation(this, WeaponData->ImpactDecal, FVector(2.0f, HalfSize, HalfSize),
-			Location, Rotation, WeaponData->ImpactDecalLifetime))
+		const FVector DecalSize(2.0f, HalfSize, HalfSize);
+		// A hole in something that moves (a range target on its carrier) goes with it. The shot only brings the point, so
+		// find what is there on this machine.
+		FHitResult SurfaceHit;
+		const bool bFound = GetWorld()->LineTraceSingleByChannel(SurfaceHit, Location + Normal * 2.0f, Location - Normal * 2.0f,
+			TraceChannel, FCollisionQueryParams(SCENE_QUERY_STAT(THImpactSurface), false, GetOwner()));
+		USceneComponent* MovingSurface = bFound && SurfaceHit.GetComponent() && SurfaceHit.GetComponent()->Mobility == EComponentMobility::Movable
+			? SurfaceHit.GetComponent() : nullptr;
+		UDecalComponent* Decal = MovingSurface
+			? UGameplayStatics::SpawnDecalAttached(DecalMaterial, DecalSize, MovingSurface, NAME_None, Location, Rotation,
+				EAttachLocation::KeepWorldPosition, WeaponData->ImpactDecalLifetime)
+			: UGameplayStatics::SpawnDecalAtLocation(this, DecalMaterial, DecalSize, Location, Rotation, WeaponData->ImpactDecalLifetime);
+		if (Decal)
 		{
 			Decal->SetFadeScreenSize(0.0f);
 		}
@@ -1558,6 +1575,6 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 
 	if (WeaponData->ImpactSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, WeaponData->ImpactSound, Location);
+		UGameplayStatics::PlaySoundAtLocation(this, WeaponData->ImpactSound, Location, UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this));
 	}
 }

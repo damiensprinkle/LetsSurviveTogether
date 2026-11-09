@@ -339,8 +339,11 @@ Proposed behavior:
   period.
 - Teammates can revive them.
 - If the entire team is incapacitated, the mission restarts.
-The exact downed duration, revive rules, and whether particular mission
-types use different failure rules remain to be designed.
+Decided (2026-11-09): a downed player bleeds out after 30 seconds unless
+revived; enemies can finish off downed players; a downed player cannot
+shoot but can crawl slowly; there is no limit on how many times a player
+can be downed. Whether particular mission types use different failure
+rules remains to be designed.
 11. Mission Lifecycle
 Every mission should use a consistent lifecycle:
 1. Briefing.
@@ -692,11 +695,12 @@ become relevant.
 
   Ammunition economy                  Undecided
 
-  Revive duration and rules           Undecided
+  Revive duration and rules           30 s bleed-out, no down limit (10.3)
 
   Session provider                    EOS candidate
 
-  Voice chat                          Undecided
+  Voice chat                          Proximity voice plus walkie-talkie;
+                                      both attract enemies (radio more)
 
   Player progression and unlock       Undecided
 economy                             

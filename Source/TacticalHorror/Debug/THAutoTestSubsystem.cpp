@@ -49,6 +49,9 @@ static TAutoConsoleVariable<float> CVarAutoWalkAngle(
 	TEXT("th.AutoWalkAngle"), 0.0f, TEXT("Direction th.AutoWalk moves in, degrees from facing (90 = strafe right, 180 = backwards)."));
 static TAutoConsoleVariable<float> CVarAutoLookPitch(
 	TEXT("th.AutoLookPitch"), 0.0f, TEXT("Hold the local player's view at this pitch in degrees (0 = off; use 0.01 for level)."));
+static TAutoConsoleVariable<float> CVarAutoAimAfter(
+	TEXT("th.AutoAimAfter"), 0.0f, TEXT("Aim down sights with the held weapon from this many seconds in, and keep aiming (0 = off)."));
+
 static TAutoConsoleVariable<float> CVarAutoReloadAfter(
 	TEXT("th.AutoReloadAfter"), 0.0f, TEXT("Reload the held weapon once, this many seconds in (0 = off)."));
 static TAutoConsoleVariable<float> CVarAutoSwitchAfter(
@@ -210,6 +213,16 @@ void UTHAutoTestSubsystem::Tick(float DeltaTime)
 		if (UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>(); Weapons && Weapons->GetCurrentWeapon())
 		{
 			Weapons->GetCurrentWeapon()->StartReload();
+		}
+	}
+
+	const float AimAfter = CVarAutoAimAfter.GetValueOnGameThread();
+	if (AimAfter > 0.0f && Elapsed >= AimAfter && !bAutoAimed)
+	{
+		if (UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>(); Weapons && Weapons->GetCurrentWeapon())
+		{
+			bAutoAimed = true;
+			Weapons->SetAimingForTest(true);
 		}
 	}
 

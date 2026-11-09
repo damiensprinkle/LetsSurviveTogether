@@ -14,6 +14,7 @@ class USoundAttenuation;
 class USoundBase;
 class USoundConcurrency;
 class UStaticMesh;
+class UTHImpactSurfaces;
 
 /**
  * Tuning for one weapon. Behaviour lives in ATHWeaponBase; a new weapon should only need
@@ -147,6 +148,26 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = 5, ClampMax = 170, Units = "deg"))
 	float AimFieldOfView = 60.0f;
+
+	/**
+	 * Iron sights. Aiming moves the first-person weapon so the line from RearSight to FrontSight runs down the middle of the
+	 * screen. Both points are in the weapon mesh's own space at its reference pose (Tools.ProfileMeshes prints that space)
+	 * and move with SightBone, so animation still carries them. No SightBone = aiming only zooms.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling|Sights")
+	FName SightBone;
+
+	/** The middle of the rear sight's aperture or notch top, where the eye looks through. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling|Sights")
+	FVector RearSight = FVector::ZeroVector;
+
+	/** The tip of the front sight post. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling|Sights")
+	FVector FrontSight = FVector::ZeroVector;
+
+	/** How far in front of the eye the rear sight sits when aiming. 0 keeps it as far as it is at the hip. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling|Sights", meta = (ClampMin = 0, Units = "cm"))
+	float AimSightDistance = 0.0f;
 
 	/** Seconds to fully aim down sights. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = 0.01, Units = "s"))
@@ -321,7 +342,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation", meta = (ClampMin = 0, Units = "cm"))
 	float MuzzleFlashSize = 16.0f;
 
-	/** Deferred decal left where a shot hits the world, e.g. a bullet hole. */
+	/** Bullet holes by surface (e.g. DA_ImpactSurfaces). When set, used instead of ImpactDecal. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
+	TObjectPtr<UTHImpactSurfaces> ImpactSurfaces;
+
+	/** Deferred decal left where a shot hits the world, e.g. a bullet hole, when ImpactSurfaces is empty. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Presentation")
 	TObjectPtr<UMaterialInterface> ImpactDecal;
 

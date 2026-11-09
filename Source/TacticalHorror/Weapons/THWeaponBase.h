@@ -209,7 +209,8 @@ private:
 	void PlayFireEffects();
 	void ShowMuzzleFlash(const FTransform& Muzzle);
 	void EjectShellCasing(const FTransform& Muzzle);
-	void PlayImpactEffects(const FVector& Location, const FVector& Normal);
+	/** Surface is an EPhysicalSurface: what the shot hit, which picks the bullet hole. */
+	void PlayImpactEffects(const FVector& Location, const FVector& Normal, uint8 Surface);
 
 	void ProcessServerShot(const FVector& ViewLocation, const FRotator& ViewRotation, int32 ClientSprayIndex, int32 ShotNumber);
 	void FinishReload();
@@ -224,7 +225,7 @@ private:
 	void ServerSetFireModeIndex(uint8 NewIndex);
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastShotEffects(FVector_NetQuantize ImpactPoint, FVector_NetQuantizeNormal ImpactNormal, bool bHit);
+	void MulticastShotEffects(FVector_NetQuantize ImpactPoint, FVector_NetQuantizeNormal ImpactNormal, bool bHit, uint8 Surface);
 
 	UFUNCTION()
 	void OnRep_IsReloading();

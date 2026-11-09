@@ -1,4 +1,7 @@
 #include "Player/THCharacter.h"
+#include "EngineUtils.h"
+#include "Multiplayer/THDoorSyncComponent.h"
+#include "Multiplayer/THValveDoorComponent.h"
 #include "Player/THCharacterMovementComponent.h"
 #include "Player/Components/THFootstepComponent.h"
 #include "Weapons/THWeaponComponent.h"
@@ -112,6 +115,8 @@ ATHCharacter::ATHCharacter(const FObjectInitializer& ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	TemplateInteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprint/Input/Actions/IA_Interact.IA_Interact")));
+
 	// Component names avoid clashing with anything the template Blueprint already defines
 	HealthComponent = CreateDefaultSubobject<UTHHealthComponent>(TEXT("THHealth"));
 	WeaponComponent = CreateDefaultSubobject<UTHWeaponComponent>(TEXT("THWeapons"));
@@ -187,9 +192,13 @@ void ATHCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		WalkQuietlyAction = NewObject<UInputAction>(this, TEXT("IA_WalkQuietly"));
 		WalkQuietlyAction->bConsumeInput = true;
 
+		ValveAction = NewObject<UInputAction>(this, TEXT("IA_Valve"));
+		ValveAction->bConsumeInput = false;
+
 		UInputMappingContext* Context = NewObject<UInputMappingContext>(this, TEXT("IMC_THCharacter_Default"));
 		Context->MapKey(ReviveAction, EKeys::E);
 		Context->MapKey(WalkQuietlyAction, EKeys::LeftShift);
+		Context->MapKey(ValveAction, EKeys::F);
 
 		const APlayerController* PC = Cast<APlayerController>(GetController());
 		const ULocalPlayer* LocalPlayer = PC ? PC->GetLocalPlayer() : nullptr;
@@ -203,6 +212,94 @@ void ATHCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	EnhancedInput->BindAction(ReviveAction, ETriggerEvent::Completed, this, &ATHCharacter::StopRevive);
 	EnhancedInput->BindAction(WalkQuietlyAction, ETriggerEvent::Started, this, &ATHCharacter::StartWalkQuietly);
 	EnhancedInput->BindAction(WalkQuietlyAction, ETriggerEvent::Completed, this, &ATHCharacter::StopWalkQuietly);
+	EnhancedInput->BindAction(ValveAction, ETriggerEvent::Started, this, &ATHCharacter::HandleValvePressed);
+	EnhancedInput->BindAction(ValveAction, ETriggerEvent::Completed, this, &ATHCharacter::HandleValveReleased);
+	if (const UInputAction* InteractAction = TemplateInteractAction.LoadSynchronous())
+	{
+		// Alongside the Blueprint's own binding, which keeps handling everything else
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Started, this, &ATHCharacter::HandleInteractPressed);
+		EnhancedInput->BindAction(InteractAction, ETriggerEvent::Completed, this, &ATHCharacter::HandleInteractReleased);
+	}
+}
+
+void ATHCharacter::HandleInteractPressed()
+{
+	const APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		return;
+	}
+	// The same test as the template's TraceForInteraction, so this press and the Blueprint's agree on what is in front
+	FVector Eye;
+	FRotator Rotation;
+	PC->GetPlayerViewPoint(Eye, Rotation);
+	FHitResult Hit;
+	const bool bHit = GetWorld()->SweepSingleByChannel(Hit, Eye, Eye + Rotation.Vector() * InteractRange, FQuat::Identity, ECC_Visibility,
+		FCollisionShape::MakeSphere(5.0f), FCollisionQueryParams(SCENE_QUERY_STAT(THInteract), false, this));
+	const AActor* Target = bHit ? Hit.GetActor() : nullptr;
+	UTHPressableComponent* Pressable = Target ? Target->FindComponentByClass<UTHPressableComponent>() : nullptr;
+	if (Pressable && Pressable->UsesInteractKey())
+	{
+		// Held things (target buttons) are told when the key comes up
+		HeldInteract = Pressable;
+		ServerPress(Pressable);
+	}
+}
+
+void ATHCharacter::HandleInteractReleased()
+{
+	if (HeldInteract)
+	{
+		ServerRelease(HeldInteract);
+		HeldInteract = nullptr;
+	}
+}
+
+void ATHCharacter::HandleValvePressed()
+{
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		UTHValveDoorComponent* Valve = It->FindComponentByClass<UTHValveDoorComponent>();
+		if (Valve && Valve->IsPlayerAtValve(this))
+		{
+			HeldValve = Valve;
+			ServerPress(Valve);
+			return;
+		}
+	}
+}
+
+void ATHCharacter::HandleValveReleased()
+{
+	if (HeldValve)
+	{
+		ServerRelease(HeldValve);
+		HeldValve = nullptr;
+	}
+}
+
+void ATHCharacter::ServerPress_Implementation(UTHPressableComponent* Target)
+{
+	if (Target && Target->IsWithinReach(this))
+	{
+		Target->ServerPressed(this);
+	}
+}
+
+void ATHCharacter::ServerRelease_Implementation(UTHPressableComponent* Target)
+{
+	if (Target)
+	{
+		Target->ServerReleased(this);
+	}
+}
+
+void ATHCharacter::ServerRequestDoorUnlock_Implementation(UTHDoorSyncComponent* Door)
+{
+	if (Door)
+	{
+		Door->HandleUnlockRequest(this);
+	}
 }
 
 void ATHCharacter::StartWalkQuietly()
@@ -363,4 +460,12 @@ void ATHCharacter::CompleteRevive()
 		Target->GetHealthComponent()->Revive(GetController());
 	}
 	ReviveTarget.Reset();
+}
+
+void ATHCharacter::ServerRequestDoor_Implementation(UTHDoorSyncComponent* Door, bool bOpen)
+{
+	if (Door)
+	{
+		Door->HandleRequest(this, bOpen);
+	}
 }

@@ -6,6 +6,8 @@
 #include "THCharacter.generated.h"
 
 class UInputAction;
+class UTHDoorSyncComponent;
+class UTHPressableComponent;
 class UTHWeaponComponent;
 
 /**
@@ -47,6 +49,17 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Revive")
 	void StopRevive();
+
+	/** A template door was pressed on this client (see UTHDoorSyncComponent). Lives here because only an actor the client owns can call the server. */
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDoor(UTHDoorSyncComponent* Door, bool bOpen);
+
+	/** This client's player entered a keypad door's code. */
+	UFUNCTION(Server, Reliable)
+	void ServerRequestDoorUnlock(UTHDoorSyncComponent* Door);
+
+	/** The hold-to-turn key for valve doors (F by default). */
+	const UInputAction* GetValveAction() const { return ValveAction; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -94,8 +107,39 @@ protected:
 	void StartWalkQuietly();
 	void StopWalkQuietly();
 
+	/** Hold to turn a valve door's wheel (F by default). */
+	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
+	TObjectPtr<UInputAction> ValveAction;
+
+	/** The template's interact action. Bound here as well as in the Blueprint, for the actors the server decides. */
+	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
+	TSoftObjectPtr<UInputAction> TemplateInteractAction;
+
+	/** How far the interact press reaches (cm): the template character's InteractionRange. */
+	UPROPERTY(EditDefaultsOnly, Category = "Interaction", meta = (ClampMin = 0, Units = "cm"))
+	float InteractRange = 220.0f;
+
+	void HandleInteractPressed();
+	void HandleInteractReleased();
+	void HandleValvePressed();
+	void HandleValveReleased();
+
 private:
 	bool CanReviveTarget(const ATHCharacter* Target) const;
+
+	UFUNCTION(Server, Reliable)
+	void ServerPress(UTHPressableComponent* Target);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRelease(UTHPressableComponent* Target);
+
+	/** Local: the valve this player is holding. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTHPressableComponent> HeldValve;
+
+	/** What the interact key last pressed, told when the key is released. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTHPressableComponent> HeldInteract;
 
 	UFUNCTION(Server, Reliable)
 	void ServerStartRevive(ATHCharacter* Target);

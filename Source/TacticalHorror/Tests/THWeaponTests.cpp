@@ -7,6 +7,8 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Animation/AnimSequenceBase.h"
+#include "Animation/BlendSpace.h"
+#include "Misc/PackageName.h"
 #include "Animation/Skeleton.h"
 #include "Engine/Blueprint.h"
 #include "Engine/SkeletalMesh.h"
@@ -234,6 +236,99 @@ bool FTHWeaponSetupTest::RunTest(const FString& Parameters)
 		if (Data->WeaponLightMesh)
 		{
 			TestTrue(*(Where + TEXT(": weapon light dimmer than the hand flashlight")), Data->WeaponLightIntensity < HandFlashlightIntensity);
+		}
+	}
+	return true;
+}
+
+// Data: every animation the weapons and body sets play lives in our folders under the naming pattern (ANIMATION_GUIDE.md,
+// "Naming and folders"), so packs stay untouched and an animation can be found from the gun's name.
+//   first person  /Game/Weapons/<Gun>/Animations/A_FP_<Gun>_*
+//   third person  /Game/Animations/ThirdPerson/<Set>/A_TP_<Set>_* and AO_TP_<Set> (and their aim offset samples)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHAnimationNamingTest, "TacticalHorror.Data.AnimationNaming",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHAnimationNamingTest::RunTest(const FString& Parameters)
+{
+	auto CheckAnimation = [this](const UObject* Animation, const FString& UsedBy, const FString& Folder, const FString& Prefix)
+	{
+		if (!Animation)
+		{
+			return;
+		}
+		const FString Package = Animation->GetOutermost()->GetName();
+		const FString Name = FPackageName::GetShortName(Package);
+		TestTrue(*FString::Printf(TEXT("%s uses %s: expected %s%s*"), *UsedBy, *Package, *Folder, *Prefix),
+			Package.StartsWith(Folder) && (Name.StartsWith(Prefix) || Name.StartsWith(TEXT("AO_TP_"))));
+		if (const UBlendSpace* Space = Cast<UBlendSpace>(Animation))
+		{
+			for (const FBlendSample& Sample : Space->GetBlendSamples())
+			{
+				if (Sample.Animation)
+				{
+					const FString SamplePackage = Sample.Animation->GetOutermost()->GetName();
+					TestTrue(*FString::Printf(TEXT("%s sample %s is in %s"), *Name, *SamplePackage, *Folder), SamplePackage.StartsWith(Folder));
+				}
+			}
+		}
+	};
+
+	// First person: each gun's own folder
+	for (UClass* Class : THTests::GetWeaponClasses())
+	{
+		const UTHWeaponData* Data = Class->GetDefaultObject<ATHWeaponBase>()->GetWeaponData();
+		if (!Data)
+		{
+			continue;
+		}
+		// DA_M4 -> M4, DA_HandFlashlight -> HandFlashlight
+		const FString Gun = Data->GetName().RightChop(3);
+		const FString Folder = FString::Printf(TEXT("/Game/Weapons/%s/Animations/"), *Gun);
+		const FString Prefix = FString::Printf(TEXT("A_FP_%s_"), *Gun);
+		for (const UAnimSequenceBase* Animation : { Data->IdleAnimation.Get(), Data->EquipAnimation.Get(), Data->FireAnimation.Get(),
+			Data->ReloadAnimation.Get(), Data->ReloadEmptyAnimation.Get() })
+		{
+			CheckAnimation(Animation, Data->GetName(), Folder, Prefix);
+		}
+		if (const UTHBodyAnimSet* BodySet = Data->BodyAnimSet)
+		{
+			TestEqual(*FString::Printf(TEXT("%s's body set is named after it"), *Data->GetName()), BodySet->GetName(), TEXT("DA_Body_") + Gun);
+		}
+	}
+	if (const FSoftObjectProperty* Inspect = FindFProperty<FSoftObjectProperty>(ATHHandFlashlight::StaticClass(), TEXT("InspectAnimation")))
+	{
+		CheckAnimation(Inspect->GetPropertyValue_InContainer(GetDefault<ATHHandFlashlight>()).LoadSynchronous(), TEXT("ATHHandFlashlight"),
+			TEXT("/Game/Weapons/HandFlashlight/Animations/"), TEXT("A_FP_HandFlashlight_"));
+	}
+
+	// Third person: every body set, every animation field
+	IAssetRegistry& Registry = IAssetRegistry::GetChecked();
+	TArray<FAssetData> Sets;
+	Registry.GetAssetsByClass(UTHBodyAnimSet::StaticClass()->GetClassPathName(), Sets);
+	TestTrue(TEXT("Found the body sets"), Sets.Num() >= 6);
+	for (const FAssetData& Asset : Sets)
+	{
+		const UTHBodyAnimSet* BodySet = Cast<UTHBodyAnimSet>(Asset.GetAsset());
+		if (!BodySet)
+		{
+			continue;
+		}
+		// DA_Body_M4_Lowered -> M4
+		FString SetName = BodySet->GetName().RightChop(8);
+		SetName.RemoveFromEnd(TEXT("_Lowered"));
+		const FString Folder = FString::Printf(TEXT("/Game/Animations/ThirdPerson/%s/"), *SetName);
+		for (TFieldIterator<FObjectProperty> Property(UTHBodyAnimSet::StaticClass()); Property; ++Property)
+		{
+			const UObject* Value = Property->GetObjectPropertyValue_InContainer(BodySet);
+			if (Value && (Value->IsA<UAnimSequenceBase>() || Value->IsA<UBlendSpace>()))
+			{
+				// The hand flashlight aims like an unarmed player: it shares the unarmed aim offset
+				const bool bSharedUnarmed = Value->GetOutermost()->GetName().StartsWith(TEXT("/Game/Animations/ThirdPerson/Unarmed/AO_TP_Unarmed"));
+				CheckAnimation(Value, BodySet->GetName() + TEXT(".") + Property->GetName(),
+					bSharedUnarmed ? TEXT("/Game/Animations/ThirdPerson/Unarmed/") : Folder,
+					bSharedUnarmed ? TEXT("AO_TP_Unarmed") : FString::Printf(TEXT("A_TP_%s_"), *SetName));
+			}
 		}
 	}
 	return true;

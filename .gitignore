@@ -17,3 +17,12 @@ Plugins/*/Intermediate/
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Packaged game (Scripts/package.ps1)
+Builds/
+
+# Cook logs written by packaging
+Build/Windows/FileOpenOrder/
+# The bullet-hole pack's own demo levels and Starter Content copy: not used, not packaged
+Content/ThirdParty/Bullet_Holes/Demo/
+Content/ThirdParty/Bullet_Holes/Maps/

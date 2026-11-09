@@ -56,6 +56,12 @@ void UTHMainMenuWidget::NativeOnInitialized()
 	{
 		HostButton->OnClicked.AddDynamic(this, &UTHMainMenuWidget::HandleHostClicked);
 	}
+	if (MapButton)
+	{
+		MapButton->OnClicked.AddDynamic(this, &UTHMainMenuWidget::HandleMapClicked);
+		MapButton->SetVisibility(HostMaps.Num() > 1 ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	}
+	UpdateMapText();
 	if (FindButton)
 	{
 		FindButton->OnClicked.AddDynamic(this, &UTHMainMenuWidget::HandleFindClicked);
@@ -93,6 +99,8 @@ void UTHMainMenuWidget::BuildLayout()
 	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 40.0f));
 
 	HostButton = AddMenuButton(Menu, TEXT("HostButton"), LOCTEXT("Host", "Host Game"));
+	MapButton = AddMenuButton(Menu, TEXT("MapButton"), FText::GetEmpty());
+	MapText = Cast<UTextBlock>(MapButton->GetContent());
 	FindButton = AddMenuButton(Menu, TEXT("FindButton"), LOCTEXT("Find", "Find Games"));
 	SettingsButton = AddMenuButton(Menu, TEXT("SettingsButton"), LOCTEXT("Settings", "Settings"));
 	QuitButton = AddMenuButton(Menu, TEXT("QuitButton"), LOCTEXT("Quit", "Quit"));
@@ -198,8 +206,34 @@ void UTHMainMenuWidget::HandleHostClicked()
 	}
 	SetBusy(true);
 	SetStatus(LOCTEXT("Hosting", "Starting a game…"));
-	UE_LOG(LogTacticalHorror, Log, TEXT("Main menu: hosting %s for %d players"), *HostMapPath, MaxPlayers);
-	Sessions->HostSession(HostMapPath, MaxPlayers, true);
+	const FString Map = GetHostMap();
+	UE_LOG(LogTacticalHorror, Log, TEXT("Main menu: hosting %s for %d players"), *Map, MaxPlayers);
+	Sessions->HostSession(Map, MaxPlayers, true);
+}
+
+FString UTHMainMenuWidget::GetHostMap() const
+{
+	return HostMaps.IsValidIndex(MapIndex) ? HostMaps[MapIndex] : HostMapPath;
+}
+
+void UTHMainMenuWidget::HandleMapClicked()
+{
+	if (!HostMaps.IsEmpty())
+	{
+		MapIndex = (MapIndex + 1) % HostMaps.Num();
+		UpdateMapText();
+	}
+}
+
+void UTHMainMenuWidget::UpdateMapText()
+{
+	if (MapText)
+	{
+		// The asset name without its L_ prefix: /Game/Maps/L_FiringRange -> FiringRange
+		FString Name = FPackageName::GetShortName(GetHostMap());
+		Name.RemoveFromStart(TEXT("L_"));
+		MapText->SetText(FText::Format(LOCTEXT("MapLabel", "Map: {0}"), FText::FromString(Name)));
+	}
 }
 
 void UTHMainMenuWidget::HandleFindClicked()

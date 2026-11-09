@@ -6,8 +6,9 @@ Read GDD.md (design), TECHNICAL_ARCHITECTURE.md (how it's built), ROADMAP.md and
 - UE 5.7.4, C++ module `TacticalHorror` (`Source/TacticalHorror`), class prefix `TH`.
 - Build: `"C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" LetsSurviveTogetherEditor Win64 Development -Project="<abs path>\LetsSurviveTogether.uproject" -WaitMutex` (close the editor first, or use Live Coding).
 - Headless editor scripting: `UnrealEditor-Cmd.exe <uproject> -run=pythonscript -script=<file.py> -nullrhi -unattended`. `unreal.log` output only appears in `Saved/Logs/LetsSurviveTogether.log`.
+- A packaged build for testing on other PCs: `Scripts/package.ps1` (TESTING.md, *Two PCs*).
 - Re-usable editor scripts, the off-screen test command and the test console variables (`th.*`): `Scripts/Tools/README.md`. Vendor FPS-arms FBX packs need *Use T0 As Ref Pose*; see the G17 notes in TASKS.md.
-- Most gameplay content is Blueprint from a paid template (`Content/Blueprint`, `Content/Interaction`). It is binary: you cannot read graphs, only names/paths. Ask the developer when Blueprint behaviour matters.
+- Most gameplay content is Blueprint from a paid template (`Content/Blueprint`, `Content/Interaction`). It is binary, but graphs can be dumped as text with `TacticalHorror.Tools.DumpBlueprintGraphs` (TESTING.md): read them before relying on how a Blueprint behaves.
 
 ## Guardrails
 - Read existing code before proposing or implementing changes. Follow the established architecture and naming.
@@ -19,7 +20,7 @@ Read GDD.md (design), TECHNICAL_ARCHITECTURE.md (how it's built), ROADMAP.md and
 - Keep changes focused; one bounded feature per task. Avoid new dependencies/plugins without a reason.
 - Don't claim something works without compiling it. Say plainly what still needs an in-editor play test.
 - When a third-party package is added (Fab, Epic sample, download, template), add its row to `THIRD_PARTY_ASSETS.csv` in the same change: source, creator, license, link, location, use. Mark unknowns VERIFY rather than guessing.
-- After code or content changes, run the automated tests (`Scripts/run_tests.ps1`, editor closed; see TESTING.md) and report the result. When fixing a bug, add a test that would have caught it where practical.
+- Run the automated tests (`Scripts/run_tests.ps1`, editor closed; see TESTING.md) and report the result after code changes, and after content changes that move, rename or delete assets or change what the game uses (weapon data, body sets, maps the tests play, C++ content paths). Not needed for simply adding a new standalone asset nothing uses yet (developer, 2026-11-05). When fixing a bug, add a test that would have caught it where practical.
 - List any Unreal Editor setup the developer must do.
 - Update the docs when architecture or design decisions change. Don't turn GDD suggestions into requirements silently.
 - Don't commit unless asked.

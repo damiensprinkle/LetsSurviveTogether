@@ -101,6 +101,6 @@ for n, (key, offset, velocity) in weapons.items():
     da.set_editor_property("shell_eject_offset", offset)
     da.set_editor_property("shell_eject_velocity", velocity)
     da.set_editor_property("shell_bounce_sounds", bounce)
-    da.set_editor_property("shell_bounce_volume", 0.45)
+    da.set_editor_property("shell_bounce_volume", 0.405)  # 0.45 until the developer turned casings down 10% (2026-11-09)
     da.set_editor_property("shell_bounce_attenuation", attenuation)
     out(f"DA_{n} shells set, saved={eal.save_loaded_asset(da, False)}")

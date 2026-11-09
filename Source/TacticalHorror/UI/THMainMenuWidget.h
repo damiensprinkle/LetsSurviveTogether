@@ -17,8 +17,8 @@ class UTHSessionEntryWidget;
  *
  * Works on its own with a plain layout built in code (placeholder text, see AI_CONTENT.md). To design the real menu,
  * make a Widget Blueprint based on this class (e.g. /Game/UI/WBP_MainMenu) and give it widgets with these names, all
- * optional: HostButton, FindButton, SettingsButton, QuitButton, SessionList (any panel, e.g. a Scroll Box or Vertical
- * Box; found games are added to it) and StatusText. Then point ATHMenuPlayerController's Main Menu Widget Class at it
+ * optional: HostButton, MapButton and MapText (picks the map to host), FindButton, SettingsButton, QuitButton,
+ * SessionList (any panel, e.g. a Scroll Box or Vertical Box; found games are added to it) and StatusText. Then point ATHMenuPlayerController's Main Menu Widget Class at it
  * (DefaultGame.ini). The logic needs no changes.
  */
 UCLASS(Config = Game)
@@ -27,9 +27,13 @@ class TACTICALHORROR_API UTHMainMenuWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	/** Map a hosted game starts on (a listen server). */
+	/** Map a hosted game starts on (a listen server), when HostMaps is empty. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Menu")
-	FString HostMapPath = TEXT("/Game/Demo");
+	FString HostMapPath = TEXT("/Game/Maps/L_FiringRange");
+
+	/** Maps the host can pick from with the Map button, first is the default. Each must also be in MapsToCook. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Menu")
+	TArray<FString> HostMaps;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Menu", meta = (ClampMin = 1, ClampMax = 16))
 	int32 MaxPlayers = 4;
@@ -49,6 +53,14 @@ protected:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Menu", meta = (BindWidgetOptional))
 	TObjectPtr<UButton> HostButton;
+
+	/** Cycles through HostMaps. */
+	UPROPERTY(BlueprintReadOnly, Category = "Menu", meta = (BindWidgetOptional))
+	TObjectPtr<UButton> MapButton;
+
+	/** Shows the picked map, e.g. "Map: Demo". */
+	UPROPERTY(BlueprintReadOnly, Category = "Menu", meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> MapText;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Menu", meta = (BindWidgetOptional))
 	TObjectPtr<UButton> FindButton;
@@ -76,6 +88,13 @@ private:
 	void HandleHostClicked();
 
 	UFUNCTION()
+	void HandleMapClicked();
+
+	/** The map Host Game starts. */
+	FString GetHostMap() const;
+	void UpdateMapText();
+
+	UFUNCTION()
 	void HandleFindClicked();
 
 	UFUNCTION()
@@ -101,6 +120,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTHAudioSettingsWidget> SettingsWidget;
+
+	int32 MapIndex = 0;
 
 	FTimerHandle AutoMenuTimer;
 	int32 AutoFindAttempts = 0;

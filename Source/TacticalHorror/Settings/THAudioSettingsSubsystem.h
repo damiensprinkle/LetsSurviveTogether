@@ -7,8 +7,9 @@
 /**
  * Player volume settings, saved per user in GameUserSettings.ini. Local only: each player hears the game their way.
  *
- * Master scales everything through the audio device. Gunshots scale the weapon fire sounds where they are spawned
- * (ATHWeaponBase). A new category is a new property here plus a multiplier where that sound is played.
+ * Master scales everything through the audio device. Gunplay scales every gun sound where it is played: shots, reload
+ * and draw foley (THAnimNotify_WeaponSound), shell casings, dropped magazines, dry fire and bullet impacts. A new
+ * category is a new property here plus a multiplier where that sound is played.
  */
 UCLASS(Config = GameUserSettings)
 class TACTICALHORROR_API UTHAudioSettingsSubsystem : public UGameInstanceSubsystem
@@ -26,17 +27,17 @@ public:
 	void SetMasterVolume(float Volume);
 
 	UFUNCTION(BlueprintPure, Category = "Audio Settings")
-	float GetGunshotVolume() const { return GunshotVolume; }
+	float GetGunplayVolume() const { return GunplayVolume; }
 
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
-	void SetGunshotVolume(float Volume);
+	void SetGunplayVolume(float Volume);
 
 	/** Writes the current values to GameUserSettings.ini. */
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
 	void SaveSettings();
 
-	/** Gunshot volume for whoever is listening on this machine; 1 when there is no game instance (editor previews). */
-	static float GetGunshotVolumeFor(const UObject* WorldContext);
+	/** Gunplay volume for whoever is listening on this machine; 1 when there is no game instance (editor previews). */
+	static float GetGunplayVolumeFor(const UObject* WorldContext);
 
 private:
 	void ApplyMasterVolume(float Volume) const;
@@ -45,5 +46,5 @@ private:
 	float MasterVolume = 1.0f;
 
 	UPROPERTY(Config)
-	float GunshotVolume = 1.0f;
+	float GunplayVolume = 1.0f;
 };

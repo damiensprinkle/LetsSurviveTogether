@@ -5,6 +5,8 @@
 #include "Player/THBodyAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "AnimationRuntime.h"
+#include "HAL/IConsoleManager.h"
 #include "GameFramework/Character.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -575,6 +577,83 @@ void UTHWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	}
 }
 
+namespace
+{
+	TAutoConsoleVariable<FString> CVarSightTune(
+		TEXT("th.SightTune"), TEXT(""),
+		TEXT("Adds to the held weapon's iron sights live, in cm: \"rearUp frontUp distance\" (up = the mesh's +Z). ")
+		TEXT("Copy the sums into the weapon's data asset (RearSight.Z, FrontSight.Z, AimSightDistance)."));
+
+	/** th.SightTune's three numbers, zero when unset. */
+	FVector SightTune()
+	{
+		TArray<FString> Parts;
+		CVarSightTune.GetValueOnGameThread().ParseIntoArrayWS(Parts);
+		FVector Tune = FVector::ZeroVector;
+		for (int32 i = 0; i < 3 && i < Parts.Num(); ++i)
+		{
+			Tune[i] = FCString::Atod(*Parts[i]);
+		}
+		return Tune;
+	}
+}
+
+bool UTHWeaponComponent::GetSightPoints(FVector& OutRear, FVector& OutFront) const
+{
+	const UTHWeaponData* Data = CurrentWeapon ? CurrentWeapon->GetWeaponData() : nullptr;
+	const USkeletalMeshComponent* Mesh = CurrentWeapon ? CurrentWeapon->GetMesh() : nullptr;
+	const USkinnedAsset* Asset = Mesh ? Mesh->GetSkinnedAsset() : nullptr;
+	const int32 Bone = Asset && Data && !Data->SightBone.IsNone() ? Asset->GetRefSkeleton().FindBoneIndex(Data->SightBone) : INDEX_NONE;
+	if (Bone == INDEX_NONE)
+	{
+		return false;
+	}
+	// The points are given at the reference pose; through the bone they follow the animation
+	const FTransform Reference = FAnimationRuntime::GetComponentSpaceTransformRefPose(Asset->GetRefSkeleton(), Bone);
+	const FTransform Now = Mesh->GetBoneTransform(Bone);
+	const FVector Tune = SightTune();
+	OutRear = Now.TransformPosition(Reference.InverseTransformPosition(Data->RearSight + FVector(0.0, 0.0, Tune.X)));
+	OutFront = Now.TransformPosition(Reference.InverseTransformPosition(Data->FrontSight + FVector(0.0, 0.0, Tune.Y)));
+	return true;
+}
+
+void UTHWeaponComponent::UpdateAimSights()
+{
+	ATHWeaponBase* Weapon = CurrentWeapon;
+	const UTHWeaponData* Data = Weapon ? Weapon->GetWeaponData() : nullptr;
+	const USceneComponent* Holder = Weapon && Weapon->GetRootComponent() ? Weapon->GetRootComponent()->GetAttachParent() : nullptr;
+	if (!Data || !Holder || Data->SightBone.IsNone())
+	{
+		return;
+	}
+	// Every frame from the hip hold, so the correction never builds on itself
+	Weapon->SetActorRelativeTransform(Data->CameraHoldOffset);
+	if (AimAlpha <= 0.0f)
+	{
+		bAppliedAimSights = false;
+		return;
+	}
+	FVector RearWorld;
+	FVector FrontWorld;
+	if (!GetSightPoints(RearWorld, FrontWorld))
+	{
+		return;
+	}
+	// In the camera's space (the weapon hangs from it): X forward, the screen's middle is Y = Z = 0
+	const FTransform& View = Holder->GetComponentTransform();
+	const FVector Rear = View.InverseTransformPositionNoScale(RearWorld);
+	const FVector Front = View.InverseTransformPositionNoScale(FrontWorld);
+	const float Distance = (Data->AimSightDistance > 0.0f ? Data->AimSightDistance : Rear.X) + SightTune().Z;
+
+	// Turn the sight line onto the view axis about the rear sight, then put the rear sight on it
+	const float Alpha = FMath::InterpEaseInOut(0.0f, 1.0f, AimAlpha, 2.0f);
+	const FQuat Turn = FQuat::Slerp(FQuat::Identity, FQuat::FindBetweenNormals((Front - Rear).GetSafeNormal(), FVector::ForwardVector), Alpha);
+	const FVector RearTarget = FMath::Lerp(Rear, FVector(Distance, 0.0, 0.0), Alpha);
+	const FTransform Correction(Turn, RearTarget - Turn.RotateVector(Rear));
+	Weapon->SetActorRelativeTransform(Data->CameraHoldOffset * Correction);
+	bAppliedAimSights = true;
+}
+
 UCameraComponent* UTHWeaponComponent::FindViewCamera() const
 {
 	TInlineComponentArray<UCameraComponent*> Cameras(GetOwner());
@@ -594,6 +673,7 @@ void UTHWeaponComponent::UpdateAimFieldOfView(float DeltaTime)
 	const UTHWeaponData* Data = CurrentWeapon ? CurrentWeapon->GetWeaponData() : nullptr;
 	const float AimTime = Data ? Data->AimTime : 0.15f;
 	AimAlpha = FMath::FInterpConstantTo(AimAlpha, bIsAiming ? 1.0f : 0.0f, DeltaTime, 1.0f / AimTime);
+	UpdateAimSights();
 
 	UCameraComponent* Camera = FindViewCamera();
 	if (!Camera)

@@ -51,6 +51,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Weapons")
 	float GetAimAlpha() const { return AimAlpha; }
 
+	/**
+	 * Where the held weapon's iron sights are now (THWeaponData RearSight / FrontSight), in world space, on the
+	 * first-person mesh. False if it has none.
+	 */
+	bool GetSightPoints(FVector& OutRear, FVector& OutFront) const;
+
+	/** Aims down sights, as holding the aim button does. Local player. */
+	void SetAimingForTest(bool bNewAiming) { SetAiming(bNewAiming); }
+
 	/** Multiplier on max walk speed from the held weapon and aiming. */
 	UFUNCTION(BlueprintPure, Category = "Weapons")
 	float GetMovementSpeedMultiplier() const;
@@ -185,6 +194,9 @@ private:
 	UCameraComponent* FindViewCamera() const;
 	void UpdateAimFieldOfView(float DeltaTime);
 
+	/** Moves the first-person weapon from its hip hold so its sights line up with the screen's middle, by AimAlpha. */
+	void UpdateAimSights();
+
 	void OnFirePressed();
 	void OnFireReleased();
 	void OnAimPressed();
@@ -238,6 +250,7 @@ private:
 	float AimAlpha = 0.0f;
 	float HipFieldOfView = 90.0f;
 	bool bAppliedAimFieldOfView = false;
+	bool bAppliedAimSights = false;
 
 	TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem> InputSubsystem;
 };

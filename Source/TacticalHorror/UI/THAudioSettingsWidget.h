@@ -54,7 +54,7 @@ private:
 	void HandleMasterChanged(float Value);
 
 	UFUNCTION()
-	void HandleGunshotChanged(float Value);
+	void HandleGunplayChanged(float Value);
 
 	UFUNCTION()
 	void HandlePreviousStyle();
@@ -102,11 +102,11 @@ private:
 	TObjectPtr<USlider> MasterSlider;
 
 	UPROPERTY(Transient)
-	TObjectPtr<USlider> GunshotSlider;
+	TObjectPtr<USlider> GunplaySlider;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MasterValueText;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> GunshotValueText;
+	TObjectPtr<UTextBlock> GunplayValueText;
 };

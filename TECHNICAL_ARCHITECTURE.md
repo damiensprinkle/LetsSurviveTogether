@@ -39,6 +39,7 @@ Source/TacticalHorror/
 ├── Weapons/       THWeaponBase, THWeaponComponent, THWeaponData, THWeaponTypes, THShellCasing, THAnimNotify_WeaponSound, THHandFlashlight
 ├── Settings/      THAudioSettingsSubsystem
 ├── UI/            THAudioSettingsWidget (settings panel), THMainMenuWidget, THSessionEntryWidget, THCrosshairWidget, THAmmoWidget
+├── Range/        THTargetCarrier, THTargetButton (firing range target carriers)
 └── Multiplayer/   THSessionSubsystem
 ```
 
@@ -51,8 +52,10 @@ Layout (moves done 2026-11-05):
 ```
 Content/
 ├── Demo.umap, Maps/          the test map, MainMenu
-├── Characters/               body animation sets (BodyAnimSets), UE mannequin animations we use
-├── Weapons/                  our guns: Data (DA_*), Blueprints, M4_T0, G17, Ammo, magazines
+├── Animations/ThirdPerson/   <Gun>/A_TP_<Gun>_<State>_<Action>, AO_TP_<Gun>: our copies of every body animation played (ANIMATION_GUIDE.md)
+├── Characters/               body animation sets (BodyAnimSets: DA_Body_<Gun>[_Lowered], DA_Body_Unarmed), UE mannequin template content
+├── Weapons/                  our guns: Data (DA_*), Blueprints, <Gun>/Animations/A_FP_<Gun>_*, M4_T0 (M4 mesh), G17, HandFlashlight, Ammo
+├── Environment/              our level-building Blueprints made from pack pieces (BP_OverheadLight)
 ├── Audio/, Effects/, UI/     ours (footsteps, muzzle flash, crosshairs)
 ├── Blueprint/                the FPS horror template's Blueprints (BP_FirstPersonCharacter, game mode, widgets);
 │                             stays here (scripted moves of it crashed the editor)
@@ -87,7 +90,8 @@ Content/
 ### Weapons
 - **`UTHWeaponData`** (Data Asset) — all tuning: damage, headshot multiplier, CS-style range falloff, RPM, fire modes, magazine/reserve, reload/equip time, accuracy model, recoil pattern, ADS, move speed, sounds/FX.
 - **`ATHWeaponBase`** — hitscan behaviour. Blueprint subclasses (`BP_Weapon_Rifle`, `BP_Weapon_Pistol`) set mesh + data and can implement `On Fired`, `On Reload Started/Finished`, `On Equipped/Unequipped`, `On Fire Mode Changed`, and override `AttachToOwner`.
-- **`UTHWeaponComponent`** — loadout spawn (server), switching (client-predicted), ADS (FOV lerp, replicated for movement speed), weapon input.
+- **`UTHWeaponComponent`** — loadout spawn (server), switching (client-predicted), ADS (FOV lerp, replicated for movement speed; iron sights, below), weapon input.
+- *Iron sights:* while aiming, `UTHWeaponComponent::UpdateAimSights` puts the first-person weapon back at its hip hold (`CameraHoldOffset`) every frame, finds its sight points (`UTHWeaponData::SightBone`, `RearSight`, `FrontSight`: mesh space at the reference pose, carried by the bone so animation still moves them) and turns and moves the weapon so the line from rear to front sight runs down the middle of the screen, blended by the aim amount. Bullets already go to the middle of the screen, so the sights show where they land. The rear sight stays as far from the eye as at the hip unless `AimSightDistance` is set. Live tuning: `th.SightTune`. Third person is unchanged.
 - **`ATHHandFlashlight`** — a held item that isn't a gun (`IsFirearm()` false: no ammo readout, crosshair or ADS; left mouse switches the light). Given by `UTHWeaponComponent::GiveHandFlashlight` when the owning client sees the template character's `PickupFlashLight` flag turn true (`FlashlightPickupFlag`), added as the next slot (key 3) and inspected. Its own model components: first person in the arms' `hand_r_Flashlight` socket, third person in the body's `hand_r`; `UsesThirdPersonWeaponCopy()` false. One beam per machine, on the copy that machine sees.
 - **Weapon light** — `UTHWeaponData` *Weapon Light* section (mesh, attach frame in the muzzle bone's space, lens offset, beam). `ATHWeaponBase` keeps a light model on both copies and one beam on the visible copy. On / unlocked state is replicated on `UTHWeaponComponent` (L, `ToggleWeaponLight`, `UnlockWeaponLight`). `ATHCharacter::PawnClientRestart` removes the template Blueprint's L key binding.
 
@@ -123,9 +127,15 @@ Content/
 
 **Movement speed**: `UTHCharacterMovementComponent::GetMaxSpeed()` multiplies whatever the Blueprint sets (walk/sprint/crouch) by the weapon/ADS/downed multiplier.
 
+### Bullet holes — `UTHImpactSurfaces`
+One shared data asset, `DA_ImpactSurfaces` (`UTHWeaponData::ImpactSurfaces`), maps a hit's surface type (from the hit material's Physical Material) to a list of decals; each shot picks one at random, sized by the weapon's `ImpactDecalSize`. The server's trace finds the surface and sends it in `MulticastShotEffects`, so every machine draws the same set; a client's predicted hole uses its own trace. Surfaces without their own set use Default. Surface types (Project Settings, Physics): Concrete, Dirt, Wood, Metal, Plaster, Paper. Physical Materials: `PM_Concrete`, `PM_Wood`, `PM_Dirt` (template, `Template/LevelPrototyping/PhysicMAT`) and `PM_Metal`, `PM_Plaster`, `PM_Paper` (`Effects/PhysicalMaterials`). To tag a surface: set the Physical Material on its material (every mesh using it), or *Phys Material Override* under Collision on one placed actor (bullets trace simple collision, which the override covers). Physical Materials also pick footstep sounds. In `L_FiringRange` only the targets are tagged (Paper, by `tag_range_surfaces.py`); everything else is Default, concrete holes.
+
+### Firing range targets — `ATHTargetCarrier`, `ATHTargetButton`
+Each paper target in `L_FiringRange` has a carrier that moves its parts (the hanger; the paper is attached to it, so it is skipped) along the lane, and two buttons in its booth. Holding the interact key on a button sends `ATHCharacter::ServerPress`, letting go `ServerRelease` (the character reports the interact key's release to whatever it pressed). The server sets the carrier's replicated direction and starting offset; every machine moves its own copy of the parts from that, and each change restarts from the server's offset, so all players see the target at the same place. A shot's decal is attached to whatever it hits if that is Movable, so holes ride along with the target. Placed by `setup_target_carriers.py`.
+
 ### Audio settings — `UTHAudioSettingsSubsystem` + `UTHAudioSettingsWidget`
 - Game-instance subsystem, `Config=GameUserSettings` (saved per user in `Saved/Config/<platform>/GameUserSettings.ini`). Local only.
-- **Master** sets the audio device's transient primary volume (reset to 1 on shutdown so play-in-editor doesn't leave the editor quiet). **Gunshots** multiplies the fire sound volume in `ATHWeaponBase::PlayFireEffects`. To add a category: a property + setter here, a multiplier where those sounds play, a row in the widget. If many categories are needed, switch to Sound Classes + a Sound Mix.
+- **Master** sets the audio device's transient primary volume (reset to 1 on shutdown so play-in-editor doesn't leave the editor quiet). **Gunplay** (called Gunshots until 2026-11-09; the old saved value carries over) multiplies every gun sound where it plays: shots (`ATHWeaponBase::PlayFireEffects`), reload and draw foley (`UTHAnimNotify_WeaponSound`), the fallback `ReloadSound`, dry fire, bullet impacts, shell casings and dropped magazines (`UTHAudioSettingsSubsystem::GetGunplayVolumeFor`). Not the weapon-light click. To add a category: a property + setter here, a multiplier where those sounds play, a row in the widget. If many categories are needed, switch to Sound Classes + a Sound Mix.
 - `ATHPlayerController` toggles the menu with **Escape** or **P** (plain key bindings, not Enhanced Input, so the pawn's contexts can't remove them). Escape never reaches the game in play-in-editor, so use P there. The game keeps running (co-op); input goes UI-only while open. Console: `ToggleAudioSettings`.
 - The widget builds its layout in C++. Set `AudioSettingsWidgetClass` on the controller to a Widget Blueprint subclass to restyle it.
 
@@ -167,3 +177,9 @@ Content/
 - Open `LetsSurviveTogether.uproject` → "rebuild modules?" → Yes, or
 - `"C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat" LetsSurviveTogetherEditor Win64 Development -Project="<path>\LetsSurviveTogether.uproject" -WaitMutex`
 - Re-runnable editor setup script: `Scripts/setup_weapons.py` (see header for the command).
+
+## Doors in co-op
+
+The template's doors run only on the machine whose player pressed interact. `UTHDoorSyncComponent` (on `BP_Door`, `BP_Outward_Door`, `BP_SlideDoor`; added by `Scripts/Tools/setup_door_replication.py`) keeps their Blueprint logic and adds a replicated open / closed state owned by the server. Every machine runs the door's own `Interact` event to reach that state, so each plays the same animation and sound. A client's press moves its door at once and asks the server through `ATHCharacter::ServerRequestDoor`; the server checks the distance, and a refused press is undone. New interactive template doors need the component too. `BP_KeypadDoor` uses the same component, which also shares `CodeCorrect?`: one player's code unlocks the door for everyone.
+
+`BP_DoorLock`, `BP_Key` and `BP_ValveDoor` read input on one machine from an overlap any pawn can trigger, and the lock's state is in a Flip Flop that can't be replayed, so they work differently. Components derived from `UTHPressableComponent` (`UTHLockedDoorComponent`, `UTHKeyPickupComponent`, `UTHValveDoorComponent`) turn that overlap off and take the press from `ATHCharacter` (`IA_Interact`, or F for the valve), which asks the server. The server decides and replicates the result; each machine plays the Blueprint's own timelines. Rules: only a player with a key unlocks a `BP_DoorLock`, then anyone can use it; anyone can turn a valve. A valve's prompt shows only on its wheel: `UTHValveDoorComponent` makes the rest of `BP_ValveDoor` ignore the Visibility channel the interact trace uses (bullets use the Weapon channel and still hit it). Button prompt text comes from each actor's `GetButtonPromptInfo` (My Blueprint, Interfaces); only its Action is shown, the F is part of the prompt widget. `Has Key?` stays the template's one flag, so a key fits any lock and a player can carry only one. A taken key is hidden with its collision off, and comes back where it was if its holder's pawn is destroyed, which is what a player leaving does. Unlocking a door uses the key up: the holder's flag is cleared and the key actor destroyed, so each key opens one lock.

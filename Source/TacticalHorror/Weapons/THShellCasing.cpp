@@ -5,6 +5,7 @@
 #include "Engine/StaticMesh.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Kismet/GameplayStatics.h"
+#include "Settings/THAudioSettingsSubsystem.h"
 #include "Sound/SoundBase.h"
 
 ATHShellCasing::ATHShellCasing()
@@ -78,7 +79,8 @@ void ATHShellCasing::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherA
 	USoundBase* Sound = WeaponData->ShellBounceSounds[FMath::RandRange(0, WeaponData->ShellBounceSounds.Num() - 1)];
 	if (Sound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, Sound, Hit.ImpactPoint, WeaponData->ShellBounceVolume, FMath::FRandRange(0.95f, 1.05f),
+		UGameplayStatics::PlaySoundAtLocation(this, Sound, Hit.ImpactPoint,
+			WeaponData->ShellBounceVolume * UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this), FMath::FRandRange(0.95f, 1.05f),
 			0.0f, WeaponData->ShellBounceAttenuation);
 	}
 }

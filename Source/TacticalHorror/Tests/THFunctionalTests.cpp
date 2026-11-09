@@ -10,7 +10,9 @@
 #include "Editor.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "Player/Components/THHealthComponent.h"
@@ -59,9 +61,9 @@ namespace THFunctional
 	}
 
 	/** Opens the test map in a play session and waits for the player and their weapons. */
-	static void StartPlay(FAutomationTestBase* Test)
+	static void StartPlay(FAutomationTestBase* Test, const TCHAR* Map = TestMap)
 	{
-		AutomationOpenMap(TestMap);
+		AutomationOpenMap(Map);
 		ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(Test, TEXT("the player to spawn with their loadout"), 60.0, []()
 		{
 			const UTHWeaponComponent* Weapons = GetWeapons();
@@ -71,8 +73,10 @@ namespace THFunctional
 		Step([Test]()
 		{
 			const APawn* Player = GetPlayer();
-			Test->TestTrue(*FString::Printf(TEXT("Player on the floor (Z %.0f), not fallen through it"), Player ? Player->GetActorLocation().Z : -1.0),
-				Player && Player->GetActorLocation().Z > 0.0);
+			const ACharacter* Character = Cast<ACharacter>(Player);
+			const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+			Test->TestTrue(*FString::Printf(TEXT("Player standing on the floor (at Z %.0f), not falling through it"), Player ? Player->GetActorLocation().Z : -1.0),
+				Movement && Movement->IsMovingOnGround());
 		});
 	}
 
@@ -267,6 +271,54 @@ bool FTHFunctionalWeaponsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// Iron sights: aiming lines each gun's sights up on the middle of the screen, and letting go puts it back at the hip
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHIronSightsTest, "TacticalHorror.Functional.IronSights",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHIronSightsTest::RunTest(const FString& Parameters)
+{
+	StartPlay(this);
+	for (const int32 Slot : { 0, 1 })
+	{
+		Step([Slot]() { GetWeapons()->EquipWeaponAtIndex(Slot); });
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.5));
+		Step([]() { GetWeapons()->SetAimingForTest(true); });
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.8));
+		Step([this]()
+		{
+			const UTHWeaponComponent* Weapons = GetWeapons();
+			const ATHWeaponBase* Gun = Weapons->GetCurrentWeapon();
+			const FString Name = GetNameSafe(Gun ? Gun->GetWeaponData() : nullptr);
+			FVector RearWorld;
+			FVector FrontWorld;
+			if (!TestTrue(*(Name + TEXT(" has iron sights")), Weapons->GetSightPoints(RearWorld, FrontWorld)))
+			{
+				return;
+			}
+			// In the space of the camera the weapon hangs from: X forward, the screen's middle at Y = Z = 0
+			const FTransform& View = Gun->GetRootComponent()->GetAttachParent()->GetComponentTransform();
+			const FVector Rear = View.InverseTransformPositionNoScale(RearWorld);
+			const FVector Front = View.InverseTransformPositionNoScale(FrontWorld);
+			AddInfo(FString::Printf(TEXT("%s aimed: rear sight %s, front sight %s (cm, camera space)"), *Name, *Rear.ToCompactString(), *Front.ToCompactString()));
+			TestTrue(*(Name + TEXT(": rear sight on the middle of the screen")), FMath::Abs(Rear.Y) < 0.2 && FMath::Abs(Rear.Z) < 0.2);
+			TestTrue(*(Name + TEXT(": front sight on the middle of the screen")), FMath::Abs(Front.Y) < 0.2 && FMath::Abs(Front.Z) < 0.2);
+			TestTrue(*(Name + TEXT(": front sight beyond the rear one")), Front.X > Rear.X + 5.0);
+			TestTrue(*(Name + TEXT(": rear sight in front of the eye, past the near clip plane")), Rear.X > 2.0);
+		});
+		Step([]() { GetWeapons()->SetAimingForTest(false); });
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.8));
+		Step([this]()
+		{
+			const ATHWeaponBase* Gun = GetWeapons()->GetCurrentWeapon();
+			TestTrue(*(GetNameSafe(Gun->GetWeaponData()) + TEXT(": back at the hip hold after letting go")),
+				Gun->GetRootComponent()->GetRelativeTransform().Equals(Gun->GetWeaponData()->CameraHoldOffset, 0.01));
+		});
+	}
+	EndPlay(this);
+	return true;
+}
+
 // Damage: a shot at the chest of a character standing 5 m away takes health off it
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHFunctionalShotDamageTest, "TacticalHorror.Functional.ShotDamage",
@@ -358,6 +410,98 @@ bool FTHFunctionalShotDamageTest::RunTest(const FString& Parameters)
 		}
 	});
 
+	EndPlay(this);
+	return true;
+}
+// Maps: each playable map spawns the player standing on its floor (catches missing collision on imported levels)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHFiringRangeSpawnTest, "TacticalHorror.Functional.FiringRangeSpawn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHFiringRangeSpawnTest::RunTest(const FString& Parameters)
+{
+	StartPlay(this, TEXT("/Game/Maps/L_FiringRange"));
+	// A couple of seconds more: a player without a floor under them is clearly falling by then
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(2.0));
+	Step([this]()
+	{
+		const ACharacter* Character = Cast<ACharacter>(GetPlayer());
+		const UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+		TestTrue(*FString::Printf(TEXT("Still standing in the firing range after 2 s (Z %.0f)"), Character ? Character->GetActorLocation().Z : -1.0),
+			Movement && Movement->IsMovingOnGround());
+		// The players start in the room behind the range door (build_range_room.py), west of X -390
+		TestTrue(*FString::Printf(TEXT("Starts in the room behind the range door (X %.0f)"), Character ? Character->GetActorLocation().X : 0.0),
+			Character && Character->GetActorLocation().X < -400.0);
+	});
+	EndPlay(this);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHFiringRangeDoorTest, "TacticalHorror.Functional.FiringRangeDoor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHFiringRangeDoorTest::RunTest(const FString& Parameters)
+{
+	// The shell Scripts/Tools/build_range_room.py builds. A player-sized sweep straight through the doorway:
+	static const FVector DoorwayEast(-300.0, -193.0, -16.0);
+	static const FVector DoorwayWest(-500.0, -193.0, -16.0);
+	static const FVector RoomCentre(-790.0, -40.0, 0.0);
+
+	static const auto DoorwayBlocked = []()
+	{
+		FHitResult Hit;
+		return GetPlayWorld()->SweepSingleByChannel(Hit, DoorwayEast, DoorwayWest, FQuat::Identity, ECC_Pawn,
+			FCollisionShape::MakeCapsule(30.0f, 88.0f), FCollisionQueryParams(SCENE_QUERY_STAT(THTestTrace), false, GetPlayer()));
+	};
+
+	StartPlay(this, TEXT("/Game/Maps/L_FiringRange"));
+	Step([this]()
+	{
+		UWorld* World = GetPlayWorld();
+		const FVector Start = GetPlayer()->GetActorLocation();
+		FHitResult Hit;
+		FCollisionQueryParams Query(SCENE_QUERY_STAT(THTestTrace), false, GetPlayer());
+		TestTrue(TEXT("There is a ceiling above the player start"),
+			World->LineTraceSingleByChannel(Hit, Start, Start + FVector(0.0, 0.0, 2000.0), ECC_Visibility, Query));
+		TestTrue(TEXT("There is a floor in the room behind the door"),
+			World->LineTraceSingleByChannel(Hit, RoomCentre, RoomCentre - FVector(0.0, 0.0, 500.0), ECC_Visibility, Query));
+		TestTrue(TEXT("There is a ceiling in the room behind the door"),
+			World->LineTraceSingleByChannel(Hit, RoomCentre, RoomCentre + FVector(0.0, 0.0, 500.0), ECC_Visibility, Query));
+		TestTrue(TEXT("The closed door blocks the doorway"), DoorwayBlocked());
+
+		// Open it the way the player's interact key does: the template's BPI_Interaction Interact event
+		AActor* Door = nullptr;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			if (It->GetClass()->GetName().StartsWith(TEXT("BP_Door")))
+			{
+				Door = *It;
+				break;
+			}
+		}
+		UFunction* Interact = Door ? Door->FindFunction(TEXT("Interact")) : nullptr;
+		if (!TestNotNull(TEXT("BP_Door is in the level and has the Interact event"), Interact))
+		{
+			return;
+		}
+		TArray<uint8> Arguments;
+		Arguments.SetNumZeroed(Interact->ParmsSize);
+		Interact->InitializeStruct(Arguments.GetData());
+		for (TFieldIterator<FObjectProperty> It(Interact); It && (It->PropertyFlags & CPF_Parm); ++It)
+		{
+			if (GetPlayer()->IsA(It->PropertyClass))
+			{
+				It->SetObjectPropertyValue_InContainer(Arguments.GetData(), GetPlayer());
+			}
+		}
+		Door->ProcessEvent(Interact, Arguments.GetData());
+		Interact->DestroyStruct(Arguments.GetData());
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(3.0));
+	Step([this]()
+	{
+		TestFalse(TEXT("The opened door leaves the doorway clear for a player"), DoorwayBlocked());
+	});
 	EndPlay(this);
 	return true;
 }

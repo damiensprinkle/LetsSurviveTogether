@@ -76,8 +76,8 @@ void UTHAudioSettingsWidget::BuildLayout()
 	AddSectionTitle(Box, LOCTEXT("AudioSection", "Audio"));
 	MasterSlider = AddVolumeRow(Box, LOCTEXT("Master", "Master"), MasterValueText);
 	MasterSlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleMasterChanged);
-	GunshotSlider = AddVolumeRow(Box, LOCTEXT("Gunshots", "Gunshots"), GunshotValueText);
-	GunshotSlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleGunshotChanged);
+	GunplaySlider = AddVolumeRow(Box, LOCTEXT("Gunplay", "Gunplay"), GunplayValueText);
+	GunplaySlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleGunplayChanged);
 
 	// Crosshair
 	AddSectionTitle(Box, LOCTEXT("CrosshairSection", "Crosshair"));
@@ -212,10 +212,10 @@ void UTHAudioSettingsWidget::NativeConstruct()
 			MasterSlider->SetValue(Settings->GetMasterVolume());
 			MasterValueText->SetText(FormatPercent(Settings->GetMasterVolume()));
 		}
-		if (GunshotSlider)
+		if (GunplaySlider)
 		{
-			GunshotSlider->SetValue(Settings->GetGunshotVolume());
-			GunshotValueText->SetText(FormatPercent(Settings->GetGunshotVolume()));
+			GunplaySlider->SetValue(Settings->GetGunplayVolume());
+			GunplayValueText->SetText(FormatPercent(Settings->GetGunplayVolume()));
 		}
 	}
 	RefreshCrosshairControls();
@@ -302,13 +302,13 @@ void UTHAudioSettingsWidget::HandleMasterChanged(float Value)
 	MasterValueText->SetText(FormatPercent(Value));
 }
 
-void UTHAudioSettingsWidget::HandleGunshotChanged(float Value)
+void UTHAudioSettingsWidget::HandleGunplayChanged(float Value)
 {
 	if (UTHAudioSettingsSubsystem* Settings = GetSettings())
 	{
-		Settings->SetGunshotVolume(Value);
+		Settings->SetGunplayVolume(Value);
 	}
-	GunshotValueText->SetText(FormatPercent(Value));
+	GunplayValueText->SetText(FormatPercent(Value));
 }
 
 void UTHAudioSettingsWidget::HandlePreviousStyle()

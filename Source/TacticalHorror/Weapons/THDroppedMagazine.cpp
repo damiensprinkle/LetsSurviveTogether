@@ -3,6 +3,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Kismet/GameplayStatics.h"
+#include "Settings/THAudioSettingsSubsystem.h"
 #include "Sound/SoundBase.h"
 
 ATHDroppedMagazine::ATHDroppedMagazine()
@@ -58,5 +59,5 @@ void ATHDroppedMagazine::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* Ot
 		return;
 	}
 	bPlayedSound = true;
-	UGameplayStatics::PlaySoundAtLocation(this, DropSound, Hit.ImpactPoint, 1.0f, FMath::FRandRange(0.95f, 1.05f));
+	UGameplayStatics::PlaySoundAtLocation(this, DropSound, Hit.ImpactPoint, DropVolume * UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this), FMath::FRandRange(0.95f, 1.05f));
 }

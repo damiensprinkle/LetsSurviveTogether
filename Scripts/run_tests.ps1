@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# -DisablePlugins=Fab (below): the Fab plugin crashes a windowless editor when the saved layout has its tab open.
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root "LetsSurviveTogether.uproject"
 $report = Join-Path $root "Saved\Automation\Report"
@@ -33,7 +34,7 @@ if (Test-Path $report) { Remove-Item $report -Recurse -Force }
 $started = Get-Date
 & "$Engine\Binaries\Win64\UnrealEditor-Cmd.exe" $project `
     "-ExecCmds=Automation RunTests $Filter" "-TestExit=Automation Test Queue Empty" `
-    "-ReportExportPath=$report" -unattended -nullrhi -nosplash -nosound -NoP4 `
+    "-ReportExportPath=$report" -unattended -nullrhi -nosplash -nosound -NoP4 -DisablePlugins=Fab `
     "-log=AutomationTests.log" | Out-Null
 
 $index = Join-Path $report "index.json"
