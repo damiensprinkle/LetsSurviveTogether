@@ -62,6 +62,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage")
 	TSubclassOf<UDamageType> DamageType;
 
+	/**
+	 * How loud a shot is to enemies: they hear it within this many times their hearing range (UTHEnemyBehavior::
+	 * HearingRange; a sprinting footstep is 1). A suppressor would lower it.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Damage", meta = (ClampMin = 0))
+	float NoiseLoudness = 4.0f;
+
 	// Firing
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing", meta = (ClampMin = 1))
@@ -451,9 +458,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (Units = "cm"))
 	FVector WeaponLightLensOffset = FVector(8.0f, 0.0f, 0.0f);
 
-	/** Same (unitless) scale as the hand flashlight's Intensity (10000); keep it well below that. */
+	/** Same (unitless) scale as the hand flashlight's Intensity (10000); keep it well below that. 4400: 10% up from 4000 (developer, 2026-11-11). */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0))
-	float WeaponLightIntensity = 4000.0f;
+	float WeaponLightIntensity = 4400.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Light", meta = (ClampMin = 0, Units = "cm"))
 	float WeaponLightRange = 2000.0f;

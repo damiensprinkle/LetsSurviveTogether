@@ -31,6 +31,20 @@ class TACTICALHORROR_API UTHHealthComponent : public UActorComponent
 public:
 	UTHHealthComponent();
 
+	/** For an owner's constructor: its default health, whether it can be downed and whether it heals by itself (enemies do neither). */
+	void SetDefaults(float InMaxHealth, bool bInCanBeDowned, bool bInRegenerates = true);
+
+	/** Seconds since the last damage taken (server; large if never). */
+	float GetTimeSinceDamage() const;
+
+	/** Seconds without damage before health starts coming back. */
+	float GetRegenDelay() const { return RegenDelay; }
+
+	bool Regenerates() const { return bRegenerates; }
+
+	/** Server only, before any damage: a different full health (an enemy's behaviour can set its own). */
+	void SetMaxHealth(float InMaxHealth);
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION(BlueprintPure, Category = "Health")
@@ -82,7 +96,10 @@ protected:
 	UFUNCTION()
 	void OnRep_HealthState(ETHHealthState OldState);
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health", meta = (ClampMin = 1))
+	/** Another player is up (alive) who could revive this one. */
+	bool HasTeammateWhoCanRevive() const;
+
+	UPROPERTY(EditDefaultsOnly, Replicated, BlueprintReadOnly, Category = "Health", meta = (ClampMin = 1))
 	float MaxHealth = 100.0f;
 
 	/** Players get downed; enemies and props should turn this off and die immediately. */
@@ -96,6 +113,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health|Downed", meta = (EditCondition = "bCanBeDowned", ClampMin = 0.01, ClampMax = 1))
 	float ReviveHealthFraction = 0.3f;
 
+	/**
+	 * Heals by itself after RegenDelay seconds without damage, RegenRate a second, up to full (developer, 2026-11-12: no
+	 * healing items; the blood on screen clears and health comes back slowly). Players only.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health|Regeneration")
+	bool bRegenerates = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health|Regeneration", meta = (EditCondition = "bRegenerates", ClampMin = 0, Units = "s"))
+	float RegenDelay = 5.0f;
+
+	/** Health a second (100 = full health): 5 takes about 20 s from nearly dead. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health|Regeneration", meta = (EditCondition = "bRegenerates", ClampMin = 0.1))
+	float RegenRate = 5.0f;
+
 	UPROPERTY(ReplicatedUsing = OnRep_Health, BlueprintReadOnly, Category = "Health")
 	float Health = 100.0f;
 
@@ -107,4 +138,10 @@ protected:
 	float BleedOutServerTime = 0.0f;
 
 	FTimerHandle BleedOutTimer;
+
+	/** Server: waits RegenDelay after a hit, then heals in small steps until full. */
+	void StartRegenTimer();
+	void RegenStep();
+	FTimerHandle RegenTimer;
+	double LastDamageTime = -1.0e9;
 };

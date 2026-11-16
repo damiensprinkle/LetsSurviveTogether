@@ -5,6 +5,7 @@
 #include "Player/THBodyAnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "AnimationRuntime.h"
 #include "HAL/IConsoleManager.h"
 #include "GameFramework/Character.h"
@@ -208,6 +209,10 @@ void UTHWeaponComponent::BeginPlay()
 		Body->SetCollisionObjectType(ECC_Pawn);
 		Body->SetCollisionResponseToAllChannels(ECR_Ignore);
 		Body->SetCollisionResponseToChannel(BulletTraceChannel, ECR_Block);
+		if (UPhysicalMaterial* Flesh = BodyPhysicalMaterial.LoadSynchronous())
+		{
+			Body->SetPhysMaterialOverride(Flesh);
+		}
 		if (GetOwner()->HasAuthority())
 		{
 			// The server traces shots against bones even where nobody looks at this body
@@ -573,7 +578,20 @@ void UTHWeaponComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	if (Pawn && Pawn->IsLocallyControlled())
 	{
 		UpdateAimFieldOfView(DeltaTime);
+		UpdateFirstPersonScale();
 		CheckFlashlightPickup();
+	}
+}
+
+void UTHWeaponComponent::UpdateFirstPersonScale()
+{
+	// Every frame because the active camera can change (the character Blueprint's own cameras); cheap when already set
+	UCameraComponent* Camera = FindViewCamera();
+	const bool bEnable = FirstPersonScale < 1.0f;
+	if (Camera && (Camera->bEnableFirstPersonScale != bEnable || Camera->FirstPersonScale != FirstPersonScale))
+	{
+		Camera->SetEnableFirstPersonScale(bEnable);
+		Camera->SetFirstPersonScale(FirstPersonScale);
 	}
 }
 

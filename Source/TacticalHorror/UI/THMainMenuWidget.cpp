@@ -95,7 +95,7 @@ void UTHMainMenuWidget::BuildLayout()
 	UVerticalBox* Menu = WidgetTree->ConstructWidget<UVerticalBox>();
 	MenuSize->SetContent(Menu);
 
-	UVerticalBoxSlot* TitleSlot = Menu->AddChildToVerticalBox(MakeText(WidgetTree, TEXT("TitleText"), LOCTEXT("Title", "Let's Survive Together"), 28));
+	UVerticalBoxSlot* TitleSlot = Menu->AddChildToVerticalBox(MakeText(WidgetTree, TEXT("TitleText"), LOCTEXT("Title", "UNITAS"), 28));
 	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 40.0f));
 
 	HostButton = AddMenuButton(Menu, TEXT("HostButton"), LOCTEXT("Host", "Host Game"));

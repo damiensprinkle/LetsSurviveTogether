@@ -20,6 +20,8 @@ class TACTICALHORROR_API UTHCharacterMovementComponent : public UCharacterMoveme
 
 public:
 	virtual float GetMaxSpeed() const override;
+	/** A downed player stays down: crouched (low view, low body) whatever the crouch key says. */
+	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 	virtual class FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 

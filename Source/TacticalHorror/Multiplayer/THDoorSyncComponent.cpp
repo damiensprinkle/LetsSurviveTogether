@@ -1,5 +1,6 @@
 #include "Multiplayer/THDoorSyncComponent.h"
 
+#include "Components/TimelineComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
@@ -17,6 +18,40 @@ void UTHDoorSyncComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UTHDoorSyncComponent, bServerOpen);
 	DOREPLIFETIME(UTHDoorSyncComponent, bServerUnlocked);
+	DOREPLIFETIME(UTHDoorSyncComponent, bServerSlam);
+	DOREPLIFETIME(UTHDoorSyncComponent, ServerSwing);
+}
+
+double UTHDoorSyncComponent::GetSwing() const
+{
+	if (const FDoubleProperty* AsDouble = CastField<FDoubleProperty>(SwingProperty))
+	{
+		return AsDouble->GetPropertyValue_InContainer(GetOwner());
+	}
+	if (const FFloatProperty* AsFloat = CastField<FFloatProperty>(SwingProperty))
+	{
+		return AsFloat->GetPropertyValue_InContainer(GetOwner());
+	}
+	return 0.0;
+}
+
+void UTHDoorSyncComponent::SetSwing(double Value)
+{
+	if (const FDoubleProperty* AsDouble = CastField<FDoubleProperty>(SwingProperty))
+	{
+		AsDouble->SetPropertyValue_InContainer(GetOwner(), Value);
+	}
+	else if (const FFloatProperty* AsFloat = CastField<FFloatProperty>(SwingProperty))
+	{
+		AsFloat->SetPropertyValue_InContainer(GetOwner(), static_cast<float>(Value));
+	}
+}
+
+double UTHDoorSyncComponent::SwingFrom(const FVector& Where) const
+{
+	// BP_Outward_Door: Dot(Normal(door - pawn), forward - right); 0 and up swings +85, below -85
+	const AActor* Door = GetOwner();
+	return FVector::DotProduct((Door->GetActorLocation() - Where).GetSafeNormal(), Door->GetActorForwardVector() - Door->GetActorRightVector());
 }
 
 void UTHDoorSyncComponent::BeginPlay()
@@ -33,6 +68,11 @@ void UTHDoorSyncComponent::BeginPlay()
 	MovingProperty = FindFProperty<FBoolProperty>(DoorClass, TEXT("Is Door Moving?"));
 	UnlockProperty = FindFProperty<FBoolProperty>(DoorClass, TEXT("CodeCorrect?"));
 	InteractFunction = GetOwner()->FindFunction(TEXT("Interact"));
+	SwingProperty = FindFProperty<FProperty>(DoorClass, TEXT("DotProduct"));
+	if (SwingProperty && !SwingProperty->IsA<FDoubleProperty>() && !SwingProperty->IsA<FFloatProperty>())
+	{
+		SwingProperty = nullptr;
+	}
 
 	if (!OpenProperty || !InteractFunction)
 	{
@@ -45,6 +85,7 @@ void UTHDoorSyncComponent::BeginPlay()
 	if (GetOwner()->HasAuthority())
 	{
 		bServerOpen = bLastSeenOpen;
+		ServerSwing = static_cast<float>(GetSwing());
 	}
 }
 
@@ -71,25 +112,41 @@ void UTHDoorSyncComponent::RunDoorInteract(APawn* Player)
 	InteractFunction->InitializeStruct(Arguments.GetData());
 	for (TFieldIterator<FObjectProperty> It(InteractFunction); It && (It->PropertyFlags & CPF_Parm); ++It)
 	{
-		if (Player && Player->IsA(It->PropertyClass))
+		// An enemy asking isn't the template's player: this machine's player stands in (the Blueprint reads its HUD), and
+		// the swing is set from the enemy afterwards
+		APawn* Given = Player && Player->IsA(It->PropertyClass) ? Player : GetLocalPawn();
+		if (Given && Given->IsA(It->PropertyClass))
 		{
-			It->SetObjectPropertyValue_InContainer(Arguments.GetData(), Player);
+			It->SetObjectPropertyValue_InContainer(Arguments.GetData(), Given);
 		}
 	}
 	GetOwner()->ProcessEvent(InteractFunction, Arguments.GetData());
 	InteractFunction->DestroyStruct(Arguments.GetData());
 }
 
-void UTHDoorSyncComponent::HandleRequest(APawn* InRequester, bool bOpen)
+void UTHDoorSyncComponent::SetSwingRate(float Rate)
 {
-	if (!GetOwner()->HasAuthority() || !InRequester || IsLocked()
-		|| FVector::Dist(InRequester->GetActorLocation(), GetOwner()->GetActorLocation()) > MaxRequestDistance)
+	TInlineComponentArray<UTimelineComponent*> Timelines(GetOwner());
+	for (UTimelineComponent* Timeline : Timelines)
 	{
-		return;
+		Timeline->SetPlayRate(Rate);
+	}
+	bSpedUp = Rate > 1.0f;
+}
+
+bool UTHDoorSyncComponent::HandleRequest(APawn* InRequester, bool bOpen, bool bSlam)
+{
+	// A charge asks from further off (it is coming fast)
+	if (!GetOwner()->HasAuthority() || !InRequester || IsLocked()
+		|| FVector::Dist(InRequester->GetActorLocation(), GetOwner()->GetActorLocation()) > MaxRequestDistance * (bSlam ? 1.6f : 1.0f))
+	{
+		return false;
 	}
 	bHasRequest = true;
 	bRequestedOpen = bOpen;
+	bRequestedSlam = bSlam && bOpen;
 	Requester = InRequester;
+	return bServerOpen != bOpen;
 }
 
 void UTHDoorSyncComponent::HandleUnlockRequest(APawn* InRequester)
@@ -135,12 +192,23 @@ void UTHDoorSyncComponent::TickServer(bool bOpen)
 		bHasRequest = false;
 		if (bOpen != bRequestedOpen)
 		{
+			bServerSlam = bRequestedSlam;
+			SetSwingRate(bServerSlam ? SlamPlayRate : 1.0f);
 			RunDoorInteract(Requester.IsValid() ? Requester.Get() : GetLocalPawn());
 			bOpen = IsDoorOpen();
+			// Opened: away from whoever asked (a player or an enemy), as the Blueprint means it to
+			if (bOpen && SwingProperty && Requester.IsValid())
+			{
+				SetSwing(SwingFrom(Requester->GetActorLocation()));
+			}
 		}
 	}
 	// Whatever moved it (the request above, or the host's own press), this is now the state everyone follows
 	bServerOpen = bOpen;
+	if (SwingProperty)
+	{
+		ServerSwing = static_cast<float>(GetSwing());
+	}
 }
 
 void UTHDoorSyncComponent::TickClient(bool bOpen)
@@ -168,8 +236,16 @@ void UTHDoorSyncComponent::TickClient(bool bOpen)
 		PendingUntil = -1.0;
 	}
 
+	// The server's swing, whoever this machine had press it (the timeline reads it every frame, so a swing under way turns)
+	if (SwingProperty && GetSwing() != ServerSwing)
+	{
+		SetSwing(ServerSwing);
+	}
+
 	if (bServerOpen != bOpen && !IsDoorMoving())
 	{
+		// Slammed open on the server: fast here too
+		SetSwingRate(bServerSlam && bServerOpen ? SlamPlayRate : 1.0f);
 		RunDoorInteract(GetLocalPawn());
 		// Read back so the next tick does not take this for the player's own press
 		bLastSeenOpen = IsDoorOpen();
@@ -181,6 +257,11 @@ void UTHDoorSyncComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	SyncUnlock();
+	// A slam over: the door swings at its own pace again
+	if (bSpedUp && !IsDoorMoving())
+	{
+		SetSwingRate(1.0f);
+	}
 	if (GetOwner()->HasAuthority())
 	{
 		TickServer(IsDoorOpen());

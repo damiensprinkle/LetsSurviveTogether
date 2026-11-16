@@ -72,7 +72,7 @@ bool UTHCrosshairWidget::ShouldShow() const
 		return false;
 	}
 	const UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>();
-	return Weapons && Weapons->GetCurrentWeapon() && Weapons->GetCurrentWeapon()->IsFirearm() && !Weapons->IsAiming();
+	return Weapons && !Weapons->AreWeaponsBlocked() && Weapons->GetCurrentWeapon() && Weapons->GetCurrentWeapon()->IsFirearm() && !Weapons->IsAiming();
 }
 
 void UTHCrosshairWidget::FindTemplateCrosshair()

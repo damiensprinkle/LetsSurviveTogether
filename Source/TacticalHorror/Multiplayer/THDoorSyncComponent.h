@@ -35,13 +35,21 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	/** Server: a player asks for the door to end up open or closed. Ignored if they are too far away to have pressed it. */
-	void HandleRequest(APawn* InRequester, bool bOpen);
+	/** Server: a player asks for the door to end up open or closed. Ignored if they are too far away to have pressed it.
+	 *  Slammed (a charging enemy): it swings open Slam Play Rate times as fast, on every machine. True if taken and the door
+	 *  isn't already that way (it will move). */
+	bool HandleRequest(APawn* InRequester, bool bOpen, bool bSlam = false);
 
 	/** Server: a player entered this door's code on their screen. */
 	void HandleUnlockRequest(APawn* InRequester);
 
 	bool IsUnlockedOnServer() const { return bServerUnlocked; }
+
+	/** Not locked (anyone, an enemy too, can open it). */
+	bool CanBeOpened() const { return !IsLocked(); }
+
+	/** Server: shut and still (an enemy stopped by it bangs on it). */
+	bool IsShut() const { return !bServerOpen && !IsDoorMoving(); }
 
 protected:
 	/** How far from the door (cm) the server accepts a player's request. Above the template's interaction range, for lag. */
@@ -51,6 +59,11 @@ protected:
 	/** How long (seconds) a client waits for the server to agree with its press before following the server again. */
 	UPROPERTY(EditDefaultsOnly, Category = "Door")
 	float RequestTimeout = 2.0f;
+
+	/** Slammed open by a charging enemy (developer, 2026-11-13: the charger opened doors so slowly it ran into them): the door's
+	 *  own swing (its Blueprint timelines) played this many times as fast. */
+	UPROPERTY(EditDefaultsOnly, Category = "Door", meta = (ClampMin = 1))
+	float SlamPlayRate = 7.0f;
 
 private:
 	bool IsDoorOpen() const;
@@ -70,6 +83,29 @@ private:
 
 	UPROPERTY(Replicated)
 	bool bServerUnlocked = false;
+
+	/** The last time it was opened, it was slammed (so every machine swings it fast). */
+	UPROPERTY(Replicated)
+	bool bServerSlam = false;
+	bool bRequestedSlam = false;
+	/** Its timelines are sped up (a slam) and go back to normal once it stops. */
+	bool bSpedUp = false;
+	void SetSwingRate(float Rate);
+
+	/**
+	 * Which way it swings. BP_Outward_Door works it out as it opens, from where the pressing Player stands (its DotProduct:
+	 * 85 degrees one way or the other), so a client replaying Interact with its own pawn, or an enemy opening it (no
+	 * Player at all), swung it differently on different machines (developer, 2026-11-13). The server sets it from whoever
+	 * asked and every machine copies it. Null on doors without one.
+	 */
+	const FProperty* SwingProperty = nullptr;
+	double GetSwing() const;
+	void SetSwing(double Value);
+	/** Server: the swing a pawn standing here gives (as the door's Blueprint works it out). */
+	double SwingFrom(const FVector& Where) const;
+
+	UPROPERTY(Replicated)
+	float ServerSwing = 0.0f;
 
 	/** BP_KeypadDoor's CodeCorrect?. Null on doors with no lock. */
 	const FBoolProperty* UnlockProperty = nullptr;

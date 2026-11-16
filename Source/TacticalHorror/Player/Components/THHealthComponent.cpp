@@ -14,10 +14,56 @@ UTHHealthComponent::UTHHealthComponent()
 	SetIsReplicatedByDefault(true);
 }
 
+void UTHHealthComponent::SetDefaults(float InMaxHealth, bool bInCanBeDowned, bool bInRegenerates)
+{
+	MaxHealth = FMath::Max(1.0f, InMaxHealth);
+	Health = MaxHealth;
+	bCanBeDowned = bInCanBeDowned;
+	bRegenerates = bInRegenerates;
+}
+
+float UTHHealthComponent::GetTimeSinceDamage() const
+{
+	return GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds() - LastDamageTime) : 1.0e9f;
+}
+
+void UTHHealthComponent::StartRegenTimer()
+{
+	UWorld* World = GetWorld();
+	if (!bRegenerates || !World || !GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	// Restarted by every hit: the first step comes RegenDelay after the last one, then ten a second
+	World->GetTimerManager().SetTimer(RegenTimer, this, &UTHHealthComponent::RegenStep, 0.1f, true, FMath::Max(RegenDelay, 0.01f));
+}
+
+void UTHHealthComponent::RegenStep()
+{
+	if (HealthState != ETHHealthState::Alive || Health >= MaxHealth)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(RegenTimer);
+		return;
+	}
+	Heal(RegenRate * 0.1f);
+}
+
+void UTHHealthComponent::SetMaxHealth(float InMaxHealth)
+{
+	if (!GetOwner()->HasAuthority() || HealthState != ETHHealthState::Alive)
+	{
+		return;
+	}
+	const bool bWasFull = Health >= MaxHealth;
+	MaxHealth = FMath::Max(1.0f, InMaxHealth);
+	Health = bWasFull ? MaxHealth : FMath::Min(Health, MaxHealth);
+}
+
 void UTHHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(UTHHealthComponent, Health);
+	DOREPLIFETIME(UTHHealthComponent, MaxHealth);
 	DOREPLIFETIME(UTHHealthComponent, HealthState);
 	DOREPLIFETIME(UTHHealthComponent, BleedOutServerTime);
 }
@@ -46,9 +92,18 @@ float UTHHealthComponent::GetBleedOutTimeRemaining() const
 
 void UTHHealthComponent::HandleTakeAnyDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
 {
-	// Damage while downed is ignored for now; the GDD hasn't decided whether enemies can finish off downed players
-	if (Damage <= 0.0f || HealthState != ETHHealthState::Alive)
+	if (Damage <= 0.0f || HealthState == ETHHealthState::Dead)
 	{
+		return;
+	}
+	// Downed: an enemy's blow finishes them off (developer, 2026-11-09); other damage (a teammate's stray shot) is ignored
+	if (HealthState == ETHHealthState::Downed)
+	{
+		const APawn* Attacker = InstigatedBy ? InstigatedBy->GetPawn() : nullptr;
+		if (InstigatedBy && !InstigatedBy->IsPlayerController() && Attacker && !Attacker->IsPlayerControlled())
+		{
+			SetHealthState(ETHHealthState::Dead, InstigatedBy);
+		}
 		return;
 	}
 
@@ -67,13 +122,39 @@ void UTHHealthComponent::HandleTakeAnyDamage(AActor* DamagedActor, float Damage,
 
 	const float OldHealth = Health;
 	Health = FMath::Clamp(Health - Damage, 0.0f, MaxHealth);
+	LastDamageTime = GetWorld()->GetTimeSeconds();
 	OnRep_Health(OldHealth);
 	OnHealthChanged.Broadcast(this, Health, DamageCauser);
+	if (Health > 0.0f)
+	{
+		StartRegenTimer();
+	}
 
 	if (Health <= 0.0f)
 	{
-		SetHealthState(bCanBeDowned ? ETHHealthState::Downed : ETHHealthState::Dead, InstigatedBy);
+		// Downed only while someone is left to revive them: alone (solo, or the last one standing) they just die
+		// (developer, 2026-11-11)
+		SetHealthState(bCanBeDowned && HasTeammateWhoCanRevive() ? ETHHealthState::Downed : ETHHealthState::Dead, InstigatedBy);
 	}
+}
+
+bool UTHHealthComponent::HasTeammateWhoCanRevive() const
+{
+	const AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GameState)
+	{
+		return false;
+	}
+	for (const APlayerState* PS : GameState->PlayerArray)
+	{
+		const APawn* Pawn = PS ? PS->GetPawn() : nullptr;
+		const UTHHealthComponent* Other = Pawn && Pawn != GetOwner() ? Pawn->FindComponentByClass<UTHHealthComponent>() : nullptr;
+		if (Other && Other->IsAlive())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void UTHHealthComponent::Heal(float Amount)
@@ -107,6 +188,9 @@ void UTHHealthComponent::Revive(AController* Reviver)
 	}
 
 	SetHealthState(ETHHealthState::Alive, Reviver);
+	// Back up hurt: heals the same way, once RegenDelay passes
+	LastDamageTime = GetWorld()->GetTimeSeconds();
+	StartRegenTimer();
 }
 
 void UTHHealthComponent::Kill(AController* Killer)
@@ -143,6 +227,7 @@ void UTHHealthComponent::SetHealthState(ETHHealthState NewState, AController* In
 
 	UWorld* World = GetWorld();
 	World->GetTimerManager().ClearTimer(BleedOutTimer);
+	World->GetTimerManager().ClearTimer(RegenTimer);
 	BleedOutServerTime = 0.0f;
 
 	if (NewState == ETHHealthState::Downed)

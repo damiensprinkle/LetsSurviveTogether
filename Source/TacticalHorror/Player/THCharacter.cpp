@@ -1,8 +1,20 @@
 #include "Player/THCharacter.h"
 #include "EngineUtils.h"
+#include "Enemies/THEnemyCharacter.h"
+#include "Components/LightComponent.h"
 #include "Multiplayer/THDoorSyncComponent.h"
 #include "Multiplayer/THValveDoorComponent.h"
 #include "Player/THCharacterMovementComponent.h"
+#include "Player/THPlayerController.h"
+#include "Weapons/THWeaponBase.h"
+#include "PhysicsEngine/PhysicsAsset.h"
+#include "Kismet/GameplayStatics.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Net/UnrealNetwork.h"
+#include "Sound/SoundAttenuation.h"
+#include "Sound/SoundBase.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Player/Components/THFootstepComponent.h"
 #include "Weapons/THWeaponComponent.h"
 #include "Camera/CameraComponent.h"
@@ -117,6 +129,30 @@ ATHCharacter::ATHCharacter(const FObjectInitializer& ObjectInitializer)
 
 	TemplateInteractAction = TSoftObjectPtr<UInputAction>(FSoftObjectPath(TEXT("/Game/Blueprint/Input/Actions/IA_Interact.IA_Interact")));
 
+	// Sounds (developer's picks, 2026-11-11): MaleCharVocLITE hit reactions and jumping, HealthDamageSFX death stingers
+	auto Sounds = [](const TCHAR* Folder, const TCHAR* Prefix, std::initializer_list<const TCHAR*> Numbers)
+	{
+		TArray<TSoftObjectPtr<USoundBase>> List;
+		for (const TCHAR* Number : Numbers)
+		{
+			const FString Name = FString::Printf(TEXT("%s%s_Cue"), Prefix, Number);
+			List.Add(TSoftObjectPtr<USoundBase>(FSoftObjectPath(FString::Printf(TEXT("%s/%s.%s"), Folder, *Name, *Name))));
+		}
+		return List;
+	};
+	HurtSounds = Sounds(TEXT("/Game/ThirdParty/MaleCharVocLITE/Cues/Combat/Hit_Reactions"), TEXT("VOXReac_HitReaction_HA_MaleCharVoc_"), { TEXT("01"), TEXT("04"), TEXT("31"), TEXT("36") });
+	JumpSounds = Sounds(TEXT("/Game/ThirdParty/MaleCharVocLITE/Cues/Physical_States/Jumping"), TEXT("VOXMale_Jumping_HA_MaleCharVoc_"), { TEXT("02"), TEXT("07"), TEXT("48"), TEXT("57") });
+	DeathSounds = Sounds(TEXT("/Game/ThirdParty/HealthDamageSFX/Cues/Death"), TEXT("DSGNStngr_DeathCue_HA_HealthDmg_"),
+		{ TEXT("01"), TEXT("02"), TEXT("03"), TEXT("04"), TEXT("05"), TEXT("06"), TEXT("07"), TEXT("08"), TEXT("09"), TEXT("10"), TEXT("11"), TEXT("12"), TEXT("13"), TEXT("14"), TEXT("15"), TEXT("16") });
+	VoiceAttenuation = TSoftObjectPtr<USoundAttenuation>(FSoftObjectPath(TEXT("/Game/Audio/SA_Voice.SA_Voice")));
+
+	// Death performances (Darkania Works, CC BY 4.0): all but _04, which never falls
+	for (const int32 Number : { 0, 1, 2, 3, 5, 6, 7, 8, 9, 10 })
+	{
+		const FString Name = FString::Printf(TEXT("SK_DramaticDeath_%02d"), Number);
+		DeathPerformances.Add(TSoftObjectPtr<UAnimSequence>(FSoftObjectPath(FString::Printf(TEXT("/Game/ThirdParty/DramaticDeath/Animations/%s.%s"), *Name, *Name))));
+	}
+
 	// Component names avoid clashing with anything the template Blueprint already defines
 	HealthComponent = CreateDefaultSubobject<UTHHealthComponent>(TEXT("THHealth"));
 	WeaponComponent = CreateDefaultSubobject<UTHWeaponComponent>(TEXT("THWeapons"));
@@ -125,6 +161,9 @@ ATHCharacter::ATHCharacter(const FObjectInitializer& ObjectInitializer)
 	// Bullets pass the capsule and hit the skeletal mesh, so hits know which bone (headshots)
 	GetCapsuleComponent()->SetCollisionResponseToChannel(WeaponTraceChannel, ECR_Ignore);
 	GetMesh()->SetCollisionResponseToChannel(WeaponTraceChannel, ECR_Block);
+	// Blood droplets pass through living bodies (they hung in the air on the invisible capsule)
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
+	GetMesh()->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
 }
 
 void ATHCharacter::BeginPlay()
@@ -132,6 +171,8 @@ void ATHCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	HealthComponent->OnHealthStateChanged.AddDynamic(this, &ATHCharacter::HandleHealthStateChanged);
+	HealthComponent->OnHealthChanged.AddDynamic(this, &ATHCharacter::HandleHealthChanged);
+	LastSeenHealth = HealthComponent->GetHealth();
 }
 
 void ATHCharacter::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
@@ -316,6 +357,19 @@ void ATHCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	// A jump: leaving the ground upwards (movement replicates, so every machine sees it)
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (Movement->IsFalling() && bWasOnGround && GetVelocity().Z > 150.0f && !bRagdoll)
+	{
+		PlayRandomSound(JumpSounds, false);
+	}
+	bWasOnGround = Movement->IsMovingOnGround();
+
+	if (IsLocallyControlled())
+	{
+		UpdateLightFlicker(DeltaSeconds);
+	}
+
 	if (CVarDebugView.GetValueOnGameThread() && IsLocallyControlled())
 	{
 		DrawViewDebug(this);
@@ -345,6 +399,13 @@ void ATHCharacter::HandleHealthStateChanged(UTHHealthComponent* Health, ETHHealt
 	if (NewState == ETHHealthState::Dead)
 	{
 		GetCharacterMovement()->DisableMovement();
+		if (HasAuthority() && !DeathPerformances.IsEmpty())
+		{
+			DeathPerformance = static_cast<uint8>(FMath::RandHelper(DeathPerformances.Num()));
+			ForceNetUpdate();
+		}
+		BecomeRagdoll();
+		PlayRandomSound(DeathSounds, true, IsLocallyControlled() ? 1.0f : OtherPlayerDeathVolume);
 	}
 	else if (OldState == ETHHealthState::Dead)
 	{
@@ -355,8 +416,140 @@ void ATHCharacter::HandleHealthStateChanged(UTHHealthComponent* Health, ETHHealt
 	{
 		StopRevive();
 	}
+	// Downed holds a crouch (UTHCharacterMovementComponent); revived, they get back up
+	else if (OldState == ETHHealthState::Downed)
+	{
+		UnCrouch();
+	}
 
 	ReceiveHealthStateChanged(NewState, OldState);
+}
+
+void ATHCharacter::HandleHealthChanged(UTHHealthComponent* Health, float NewHealth, AActor* DamageCauser)
+{
+	const float Lost = LastSeenHealth - NewHealth;
+	LastSeenHealth = NewHealth;
+	if (Lost <= 0.0f)
+	{
+		return;
+	}
+	// Heard by everyone (not the killing blow: that has the death sound)
+	if (NewHealth > 0.0f && GetWorld()->GetTimeSeconds() >= NextHurtSoundTime)
+	{
+		NextHurtSoundTime = GetWorld()->GetTimeSeconds() + HurtSoundCooldown;
+		PlayRandomSound(HurtSounds, false);
+	}
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+	if (ATHPlayerController* PC = Cast<ATHPlayerController>(GetController()))
+	{
+		PC->NotifyLocalHit(Lost);
+	}
+}
+
+void ATHCharacter::PlayRandomSound(const TArray<TSoftObjectPtr<USoundBase>>& Sounds, bool b2D, float Volume)
+{
+	if (Sounds.IsEmpty() || GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+	USoundBase* Sound = Sounds[FMath::RandHelper(Sounds.Num())].LoadSynchronous();
+	if (!Sound)
+	{
+		return;
+	}
+	LastSound = Sound;
+	if (b2D)
+	{
+		UGameplayStatics::PlaySound2D(this, Sound, Volume);
+		return;
+	}
+	UGameplayStatics::SpawnSoundAttached(Sound, GetRootComponent(), NAME_None, FVector(0.0f, 0.0f, 60.0f),
+		EAttachLocation::KeepRelativeOffset, true, Volume, 1.0f, 0.0f, VoiceAttenuation.LoadSynchronous());
+}
+
+void ATHCharacter::BecomeRagdoll()
+{
+	if (bRagdoll)
+	{
+		return;
+	}
+	bRagdoll = true;
+
+	// The owner's first-person weapon (with its arms) goes; the view falls (UTHCameraModifier)
+	if (IsLocallyControlled())
+	{
+		if (ATHWeaponBase* Weapon = WeaponComponent->GetCurrentWeapon())
+		{
+			if (USkeletalMeshComponent* FirstPerson = Weapon->GetMesh())
+			{
+				FirstPerson->SetVisibility(false, true);
+			}
+		}
+	}
+
+	// A death performance if there are any: now if the pick is known here, else when it arrives (OnRep_DeathPerformance)
+	if (!DeathPerformances.IsEmpty())
+	{
+		PlayDeathPerformance();
+		return;
+	}
+
+	USkeletalMeshComponent* Body = WeaponComponent->GetBodyMesh();
+	if (!Body || !Body->GetPhysicsAsset())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s's body has no physics asset: it can't fall as a ragdoll"), *GetName());
+		return;
+	}
+	Body->SetCollisionProfileName(TEXT("Ragdoll"));
+	Body->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	Body->SetCollisionResponseToChannel(ECC_GameTraceChannel2, ECR_Ignore);
+	Body->SetAllBodiesSimulatePhysics(true);
+	Body->SetSimulatePhysics(true);
+	Body->WakeAllRigidBodies();
+	// Folds forward rather than standing stiffly
+	Body->AddImpulse(GetActorForwardVector() * 120.0f, NAME_None, true);
+}
+
+void ATHCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(ATHCharacter, DeathPerformance);
+}
+
+void ATHCharacter::OnRep_DeathPerformance()
+{
+	if (HealthComponent && HealthComponent->GetHealthState() == ETHHealthState::Dead)
+	{
+		PlayDeathPerformance();
+	}
+}
+
+void ATHCharacter::PlayDeathPerformance()
+{
+	if (bPlayingDeathPerformance || !DeathPerformances.IsValidIndex(DeathPerformance))
+	{
+		return;
+	}
+	USkeletalMeshComponent* Body = WeaponComponent->GetBodyMesh();
+	UAnimSequence* Performance = DeathPerformances[DeathPerformance].LoadSynchronous();
+	if (!Body || !Performance)
+	{
+		return;
+	}
+	bPlayingDeathPerformance = true;
+	// Played once from the start, and held on its last frame (on the floor)
+	Body->PlayAnimation(Performance, false);
+}
+
+UAnimSequence* ATHCharacter::GetDeathPerformance() const
+{
+	const USkeletalMeshComponent* Body = WeaponComponent ? WeaponComponent->GetBodyMesh() : nullptr;
+	const UAnimSingleNodeInstance* Single = Body && bPlayingDeathPerformance ? Body->GetSingleNodeInstance() : nullptr;
+	return Single ? Cast<UAnimSequence>(Single->GetAnimationAsset()) : nullptr;
 }
 
 // Revive
@@ -467,5 +660,73 @@ void ATHCharacter::ServerRequestDoor_Implementation(UTHDoorSyncComponent* Door, 
 	if (Door)
 	{
 		Door->HandleRequest(this, bOpen);
+	}
+}
+
+void ATHCharacter::UpdateLightFlicker(float DeltaSeconds)
+{
+	// The nearest stalker that plays with lights (developer, 2026-11-13): the closer, the worse
+	float Strength = 0.0f;
+	for (TActorIterator<ATHEnemyCharacter> It(GetWorld()); It; ++It)
+	{
+		const float Reach = It->GetLightFlickerDistance();
+		if (Reach > 0.0f)
+		{
+			const float Distance = FVector::Dist(It->GetActorLocation(), GetActorLocation());
+			Strength = FMath::Max(Strength, 1.0f - Distance / Reach);
+		}
+	}
+	FlickerStrength = Strength;
+
+	// Every light this player carries (their own, their guns', the hand flashlight)
+	TArray<AActor*> Carried;
+	GetAttachedActors(Carried, true, true);
+	Carried.Add(this);
+	if (Strength <= 0.0f)
+	{
+		// Back to their own brightness
+		for (const TPair<TWeakObjectPtr<ULightComponent>, float>& Each : FlickerBase)
+		{
+			if (ULightComponent* Light = Each.Key.Get())
+			{
+				Light->SetIntensity(Each.Value);
+			}
+		}
+		FlickerBase.Reset();
+		FlickerLevel = 1.0f;
+		return;
+	}
+	// Steady a while, then a dip or a cut for a moment, then steady again: more often the closer it is (developer,
+	// 2026-11-14: too quick; it used to pick a new level every 0.04-0.18 s)
+	const double Time = GetWorld()->GetTimeSeconds();
+	if (Time >= NextFlicker)
+	{
+		const bool bWasSteady = FlickerLevel >= 1.0f;
+		const float Roll = FMath::FRand();
+		FlickerLevel = !bWasSteady || Roll > Strength * 0.9f + 0.1f ? 1.0f : Roll < Strength * 0.4f ? 0.0f : FMath::FRandRange(0.15f, 0.6f);
+		NextFlicker = Time + (FlickerLevel >= 1.0f
+			? FMath::FRandRange(FlickerSteadyTime.X, FlickerSteadyTime.Y) * FMath::Lerp(1.0f, 0.5f, Strength)
+			: FMath::FRandRange(FlickerDipTime.X, FlickerDipTime.Y));
+		// The crackle as it goes
+		if (FlickerLevel < 1.0f && !FlickerSounds.IsEmpty() && Time >= NextFlickerSound && IsLocallyControlled())
+		{
+			NextFlickerSound = Time + FlickerSoundGap;
+			if (USoundBase* Crackle = FlickerSounds[FMath::RandHelper(FlickerSounds.Num())])
+			{
+				UGameplayStatics::PlaySoundAtLocation(this, Crackle, GetPawnViewLocation(), FMath::Lerp(0.5f, 1.0f, Strength));
+			}
+		}
+	}
+	for (AActor* Holder : Carried)
+	{
+		TInlineComponentArray<ULightComponent*> Lights(Holder);
+		for (ULightComponent* Light : Lights)
+		{
+			if (!FlickerBase.Contains(Light))
+			{
+				FlickerBase.Add(Light, Light->Intensity);
+			}
+			Light->SetIntensity(FlickerBase[Light] * FlickerLevel);
+		}
 	}
 }

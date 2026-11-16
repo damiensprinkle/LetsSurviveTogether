@@ -6,6 +6,7 @@
 #include "Weapons/THImpactSurfaces.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Player/THBodyAnimInstance.h"
+#include "Player/THCharacter.h"
 #include "Player/THBodyAnimSet.h"
 #include "Settings/THAudioSettingsSubsystem.h"
 #include "Animation/AnimSequence.h"
@@ -28,6 +29,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
+#include "Perception/AISense_Hearing.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -1224,6 +1227,9 @@ void ATHWeaponBase::ProcessServerShot(const FVector& ViewLocation, const FRotato
 	ServerSprayIndex = SprayIndex + 1;
 	--CurrentAmmo;
 
+	// Enemies hear it (AI hearing)
+	UAISense_Hearing::ReportNoiseEvent(this, Origin, WeaponData->NoiseLoudness, Pawn, 0.0f, TEXT("Gunshot"));
+
 	FHitResult Hit;
 	const FVector Direction = ComputeShotDirection(ViewRotation, SprayIndex, ShotNumber);
 	const bool bHit = TraceShot(Origin, Direction, Hit);
@@ -1542,39 +1548,124 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 		return;
 	}
 
-	if (WeaponData->ImpactEffect)
+	const FTHSurfaceImpact* Impact = WeaponData->ImpactSurfaces ? &WeaponData->ImpactSurfaces->GetImpact((EPhysicalSurface)Surface) : nullptr;
+
+	// The shot only brings the point, so the direction is from the shooter's eyes (close enough on other machines)
+	const APawn* Shooter = GetOwningPawn();
+	FVector ShotDirection = Shooter ? (Location - Shooter->GetPawnViewLocation()).GetSafeNormal() : FVector::ZeroVector;
+	if (ShotDirection.IsNearlyZero())
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, WeaponData->ImpactEffect, Location, Normal.Rotation());
+		ShotDirection = -Normal;
 	}
 
-	UMaterialInterface* DecalMaterial = WeaponData->ImpactSurfaces
-		? WeaponData->ImpactSurfaces->PickDecal((EPhysicalSurface)Surface) : WeaponData->ImpactDecal.Get();
+	// The surface's effect parameters (e.g. a shorter blood spray) are set before the first tick, so they apply from the start
+	auto SpawnEffect = [this, Impact, &Location](UNiagaraSystem* System, const FRotator& Rotation)
+	{
+		const bool bParameters = Impact && (!Impact->EffectParameters.IsEmpty() || Impact->bSetEffectCollisionChannel);
+		UNiagaraComponent* Component = UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, System, Location, Rotation, FVector::OneVector,
+			/*bAutoDestroy*/ true, /*bAutoActivate*/ !bParameters);
+		if (Component && bParameters)
+		{
+			for (const TPair<FName, float>& Parameter : Impact->EffectParameters)
+			{
+				Component->SetVariableFloat(Parameter.Key, Parameter.Value);
+			}
+			if (Impact->bSetEffectCollisionChannel)
+			{
+				UTHImpactSurfaces::SetEffectCollisionChannel(Component, Impact->EffectCollisionChannel);
+			}
+			Component->Activate();
+		}
+	};
+	UNiagaraSystem* Effect = Impact && Impact->Effect ? Impact->Effect.Get() : WeaponData->ImpactEffect.Get();
+	if (Effect)
+	{
+		SpawnEffect(Effect, Normal.Rotation());
+	}
+	if (Impact && Impact->ExitEffect)
+	{
+		SpawnEffect(Impact->ExitEffect, ShotDirection.Rotation());
+	}
+
+	UMaterialInterface* DecalMaterial = Impact ? UTHImpactSurfaces::PickRandom(Impact->Decals) : WeaponData->ImpactDecal.Get();
 	if (DecalMaterial && WeaponData->ImpactDecalSize > 0.0f)
 	{
-		// Decals project along their X axis: into the surface, spun randomly so holes don't repeat
-		FRotator Rotation = (-Normal).Rotation();
-		Rotation.Roll = FMath::FRandRange(0.0f, 360.0f);
-		const float HalfSize = WeaponData->ImpactDecalSize * 0.5f;
-		const FVector DecalSize(2.0f, HalfSize, HalfSize);
-		// A hole in something that moves (a range target on its carrier) goes with it. The shot only brings the point, so
-		// find what is there on this machine.
-		FHitResult SurfaceHit;
-		const bool bFound = GetWorld()->LineTraceSingleByChannel(SurfaceHit, Location + Normal * 2.0f, Location - Normal * 2.0f,
-			TraceChannel, FCollisionQueryParams(SCENE_QUERY_STAT(THImpactSurface), false, GetOwner()));
-		USceneComponent* MovingSurface = bFound && SurfaceHit.GetComponent() && SurfaceHit.GetComponent()->Mobility == EComponentMobility::Movable
-			? SurfaceHit.GetComponent() : nullptr;
-		UDecalComponent* Decal = MovingSurface
-			? UGameplayStatics::SpawnDecalAttached(DecalMaterial, DecalSize, MovingSurface, NAME_None, Location, Rotation,
-				EAttachLocation::KeepWorldPosition, WeaponData->ImpactDecalLifetime)
-			: UGameplayStatics::SpawnDecalAtLocation(this, DecalMaterial, DecalSize, Location, Rotation, WeaponData->ImpactDecalLifetime);
-		if (Decal)
+		SpawnImpactDecal(DecalMaterial, Location, Normal, WeaponData->ImpactDecalSize, nullptr);
+	}
+
+	// What was hit, as this machine sees it at the point (the shot only brings the point): which body and bone
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(THImpactBody), false, GetOwner());
+	FHitResult HitBody;
+	GetWorld()->LineTraceSingleByChannel(HitBody, Location - ShotDirection * 5.0f, Location + ShotDirection * 5.0f, TraceChannel, Params);
+	const AActor* HitActor = HitBody.GetActor();
+
+	// Blood on whatever is behind the hit
+	UMaterialInterface* Splatter = Impact ? UTHImpactSurfaces::PickRandom(Impact->SplatterDecals) : nullptr;
+	if (Splatter && Impact->SplatterDistance > 0.0f)
+	{
+		if (HitActor)
 		{
-			Decal->SetFadeScreenSize(0.0f);
+			Params.AddIgnoredActor(HitActor);
+		}
+		FHitResult Behind;
+		if (GetWorld()->LineTraceSingleByChannel(Behind, Location, Location + ShotDirection * Impact->SplatterDistance, TraceChannel, Params))
+		{
+			const float Size = Impact->SplatterSize * (1.0f + 0.5f * Behind.Distance / Impact->SplatterDistance);
+			SpawnImpactDecal(Splatter, Behind.ImpactPoint, Behind.ImpactNormal, Size, Behind.GetComponent());
 		}
 	}
 
-	if (WeaponData->ImpactSound)
+	// Sound: a player's body (friendly fire), a headshot, the surface's own, else the gun's
+	const UTHImpactSurfaces* Surfaces = WeaponData->ImpactSurfaces;
+	USoundBase* Sound = nullptr;
+	if (Surfaces && HitActor && HitActor->IsA<ATHCharacter>())
+	{
+		Sound = UTHImpactSurfaces::PickRandom(Surfaces->PlayerHitSounds);
+	}
+	if (!Sound && Impact && WeaponData->HeadBoneNames.Contains(HitBody.BoneName))
+	{
+		Sound = UTHImpactSurfaces::PickRandom(Impact->HeadshotSounds);
+	}
+	if (!Sound && Impact)
+	{
+		Sound = UTHImpactSurfaces::PickRandom(Impact->Sounds);
+	}
+	if (Sound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, Sound, Location, UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this), 1.0f, 0.0f,
+			Surfaces->SoundAttenuation);
+	}
+	else if (WeaponData->ImpactSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, WeaponData->ImpactSound, Location, UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this));
+	}
+}
+
+void ATHWeaponBase::SpawnImpactDecal(UMaterialInterface* Material, const FVector& Location, const FVector& Normal, float Size, UPrimitiveComponent* Surface)
+{
+	// Decals project along their X axis: into the surface, spun randomly so they don't repeat
+	FRotator Rotation = (-Normal).Rotation();
+	Rotation.Roll = FMath::FRandRange(0.0f, 360.0f);
+	const float HalfSize = Size * 0.5f;
+	const FVector DecalSize(2.0f, HalfSize, HalfSize);
+
+	// A decal on something that moves (a range target on its carrier) goes with it. Find what is there on this machine.
+	if (!Surface)
+	{
+		FHitResult SurfaceHit;
+		if (GetWorld()->LineTraceSingleByChannel(SurfaceHit, Location + Normal * 2.0f, Location - Normal * 2.0f,
+			TraceChannel, FCollisionQueryParams(SCENE_QUERY_STAT(THImpactSurface), false, GetOwner())))
+		{
+			Surface = SurfaceHit.GetComponent();
+		}
+	}
+	USceneComponent* MovingSurface = Surface && Surface->Mobility == EComponentMobility::Movable ? Surface : nullptr;
+	UDecalComponent* Decal = MovingSurface
+		? UGameplayStatics::SpawnDecalAttached(Material, DecalSize, MovingSurface, NAME_None, Location, Rotation,
+			EAttachLocation::KeepWorldPosition, WeaponData->ImpactDecalLifetime)
+		: UGameplayStatics::SpawnDecalAtLocation(this, Material, DecalSize, Location, Rotation, WeaponData->ImpactDecalLifetime);
+	if (Decal)
+	{
+		Decal->SetFadeScreenSize(0.0f);
 	}
 }

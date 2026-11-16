@@ -7,7 +7,7 @@
 /**
  * Player volume settings, saved per user in GameUserSettings.ini. Local only: each player hears the game their way.
  *
- * Master scales everything through the audio device. Gunplay scales every gun sound where it is played: shots, reload
+ * Master scales everything through the audio device. Music scales the background music and ambience. Gunplay scales every gun sound where it is played: shots, reload
  * and draw foley (THAnimNotify_WeaponSound), shell casings, dropped magazines, dry fire and bullet impacts. A new
  * category is a new property here plus a multiplier where that sound is played.
  */
@@ -32,12 +32,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
 	void SetGunplayVolume(float Volume);
 
+	/** Music and ambience (UTHAmbienceSubsystem): background music and drones. */
+	UFUNCTION(BlueprintPure, Category = "Audio Settings")
+	float GetMusicVolume() const { return MusicVolume; }
+
+	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
+	void SetMusicVolume(float Volume);
+
 	/** Writes the current values to GameUserSettings.ini. */
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
 	void SaveSettings();
 
 	/** Gunplay volume for whoever is listening on this machine; 1 when there is no game instance (editor previews). */
 	static float GetGunplayVolumeFor(const UObject* WorldContext);
+
+	/** Music and ambience volume on this machine; 1 when there is no game instance. */
+	static float GetMusicVolumeFor(const UObject* WorldContext);
 
 private:
 	void ApplyMasterVolume(float Volume) const;
@@ -47,4 +57,7 @@ private:
 
 	UPROPERTY(Config)
 	float GunplayVolume = 1.0f;
+
+	UPROPERTY(Config)
+	float MusicVolume = 1.0f;
 };

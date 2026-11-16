@@ -39,6 +39,10 @@ public:
 	UFUNCTION(Exec)
 	void WeaponLight();
 
+	/** Look input, scaled by the player's look sensitivity (and aim sensitivity while aiming down sights). */
+	virtual void AddYawInput(float Val) override;
+	virtual void AddPitchInput(float Val) override;
+
 protected:
 	virtual void SetupInputComponent() override;
 	virtual void BeginPlay() override;
@@ -56,7 +60,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<class UTHAmmoWidget> AmmoWidgetClass;
 
+	/** Full-screen status while downed, dead, or when the mission has failed. */
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UTHStatusWidget> StatusWidgetClass;
+
+public:
+	class UTHStatusWidget* GetStatusWidget() const { return StatusWidget; }
+
+	/** The local player was hurt (Damage points): jolt the view and splash blood on the screen. */
+	void NotifyLocalHit(float Damage);
+
+	class UTHCameraModifier* GetBodyCameraModifier() const { return BodyCameraModifier; }
+
 private:
+	float GetLookScale() const;
 	void OpenAudioSettings();
 	void CloseAudioSettings();
 
@@ -68,4 +85,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<class UTHCrosshairWidget> CrosshairWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UTHStatusWidget> StatusWidget;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UTHCameraModifier> BodyCameraModifier;
 };

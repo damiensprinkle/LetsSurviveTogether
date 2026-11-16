@@ -1,9 +1,10 @@
 Tactical Horror FPS --- Game Design & Development Plan
-Document version: 0.4
-Last updated: 2026-11-04
+Document version: 0.5
+Last updated: 2026-11-13 (story decided: section 9)
 Status: Early planning / pre-production
 Engine direction: Unreal Engine 5
-Working title: LetsSurviveTogether
+Game name: Unitas (developer, 2026-11-12: "Let's Survive Together" made it sound less serious; the
+project files and folders still use LetsSurviveTogether).
 
 
 
@@ -18,6 +19,14 @@ inspiration from the weapon handling and mechanical satisfaction of
 Counter-Strike 2. The atmosphere, mission structure, exploration, and
 supernatural threats take inspiration from tactical horror games such as
 Ready or Not, while establishing a distinct identity.
+
+Story update (developer, 2026-11-13): the players are now four
+researchers who wake up inside Aegis, the research facility where the
+outbreak began, and have to find their way out (section 9). They start
+with only a flashlight and find their weapons. Sections below that
+describe operators, a staging area, briefings and independent missions
+(3, 4.5, 5, 8, 11, 13) are from the earlier direction and are on hold
+until they are reworked for this story.
 
 Core design premise: Players are capable and well-armed, but they do
 not fully understand what they are entering. Good aim and teamwork can
@@ -37,11 +46,11 @@ These decisions are the current foundation of the project.
 
   Session model                       Player-hosted lobby / listen server
 
-  Campaign structure                  Independent missions
+  Campaign structure                  One continuous story in the Aegis facility (2026-11-13; was: independent missions)
 
-  Story direction                     Mystery and investigation
+  Story direction                     Survival mystery: researchers waking up inside the outbreak (section 9)
 
-  Setting                             Modern day
+  Setting                             Modern day; Aegis, a research facility
 
   Gunplay                             CS2-inspired, skill-based
 
@@ -51,8 +60,8 @@ These decisions are the current foundation of the project.
 wipe
 
   Environments                        Varied
-Preparation                         A physical staging area with
-briefing and loadout selection
+Preparation                         None for now (2026-11-13: the players start in their offices
+at Aegis; the firing range stays only as an internal testing tool)
 Where details are not yet decided, keep them flexible. Do not silently
 turn suggestions in this document into fixed requirements.
 3. Core Gameplay Loop
@@ -115,6 +124,11 @@ Loadout choices should affect how players approach a mission.
 Flashlights and night vision, for example, should offer different
 advantages rather than one being a direct upgrade over the other.
 5. Preparation Area and Loadouts
+On hold (developer, 2026-11-13): with the new story there is no staging
+area for now. The firing range (L_FiringRange) stays only as an
+internal testing tool. The rest of this section is the earlier
+direction.
+
 The preparation area is a consistent physical location between missions,
 not just a menu.
 
@@ -183,6 +197,11 @@ different tactical options.
 Enemy concepts should create different gameplay situations. Avoid making
 every enemy a bullet sponge.
 
+In the story (2026-11-13, section 9) all enemies are people infected by
+the Quorum, and there are five types: Sirens, Ambushers, Hunters,
+Stalkers and Chargers (9.3; how each plays is in ENEMIES.md). The
+Mimic below is not in the story's list.
+
 Initial conceptual archetypes:
   Archetype               Behavior                Gameplay purpose
   Stalker                 Watches from a distance Psychological tension
@@ -202,6 +221,22 @@ sounds, movement, or
 environmental cues
 Not all of these need to appear in the first prototype. Begin with one
 basic hostile and one ambush-style enemy.
+
+Ambusher, decided (developer, 2026-11-11): packs, like the creatures in
+I Am Legend: they stand together, heads down, until a player comes within
+a few metres or makes a sound near them, then the whole pack bursts out.
+Each dies to one headshot. They don't patrol.
+
+Charger, decided (developer, 2026-11-12): a rare, heavily mutated enemy.
+Seeing a player at a distance it roars, then charges very fast in a
+nearly straight line; a hit hurts badly, a miss sends it sprawling on
+the ground for a long while, time to run away or to shoot it.
+
+Stalker, decided (developer, 2026-11-11): it lies hidden and unaware
+until it hears a player (or one looks at it, 2026-11-12), then follows them more like something hiding
+than something chasing: it moves only between places they can't see,
+hides when they turn towards it, waits until they look away, and moans
+when it is right behind them, just before it strikes.
 
 A sound, distant movement, or brief silhouette in a flashlight beam can
 be more frightening than another combat encounter.
@@ -227,6 +262,8 @@ other players. Open question: what drains it (darkness, seeing
 enemies, a teammate going down). Hallucinations are private: they
 play only on the affected player's machine, so teammates see and hear
 different things.
+Decided (developer, 2026-11-11): an audible heartbeat that gets faster
+as sanity drops.
 No sanity bar on the HUD. Sanity is shown diegetically, through an
 in-world item the player looks at, such as a smartwatch showing heart
 rate (higher as sanity drops), or a journal. The item is still to be
@@ -267,49 +304,142 @@ discoveries.
 - Rescue: Find and escort a missing person.
 These are reusable mission patterns, not separate game modes.
 9. Story and Setting
-The setting is modern day, and the narrative direction is mystery and
-investigation.
+Decided (developer, 2026-11-13). This replaces the earlier direction (a
+specialist incident-response team visiting unrelated incidents across
+the country; kept in 9.6 for the record). The players are not
+operators: they are four researchers who wake up inside the facility
+where the outbreak began, and the game is their way out of it.
 
-A possible framing device is that players belong to an organization that
-investigates unusual incidents. The exact organization, its purpose, and
-the underlying explanation for the events are undecided.
+9.1 The Facility and the Organism
+The facility is called Aegis. It was researching a biological organism
+living on Hydnellum peckii (the Devil's Tooth fungus) that let the
+fungus "self-heal".
 
-Storytelling opportunities include:
-- Mission briefings.
-- Environmental storytelling.
-- Documents and recordings.
-- Strange encounters.
-- Discoveries during missions.
-- Connections between seemingly unrelated locations.
-Individual missions should have their own stories while optionally
-revealing a larger mystery.
+The research looked promising:
+- Damaged tissue repaired itself quickly.
+- Cancerous cells underwent apoptosis (cell death).
+- Researchers observed unusual cellular growth patterns.
+But it was not repairing tissue or killing cancer cells. It was
+reorganising them. Over time the researchers found it could influence
+the nervous system, adapt to different hosts and even communicate over
+long distances. They called it "The Quorum" (after quorum sensing):
+several specimens appeared to respond to each other, almost as though
+they were communicating. It uses living tissue to repair itself,
+communicate and spread.
 
-Do not lock in the organization, mythology, or overarching explanation
-until those concepts have been deliberately designed.
-9.1 Story Direction (developer's notes, 2026-11-04)
-Moved here from the roadmap, in the developer's words. A direction to
-develop, not yet a locked story.
+9.2 The Outbreak
+- The mouse experiments went very well, and Aegis was granted human
+  trials. Patients were kept in containment cells; Aegis was careful
+  (it had already had a containment breach at a sister facility), so
+  procedures were strict.
+- The first patient, Liam Anderson, had stage IV lung cancer and three
+  months to live. He was declared cancer-free after 5 days and stayed in
+  containment with no symptoms.
+- His results were so good that 13 more patients with similar outlooks
+  were brought in. One after another, the outcomes were great.
+- After 30 days all 14 were let out of containment and allowed into the
+  cafeteria. Everything was normal (eating, talking, laughing) until,
+  in one moment, they all stopped. All 14 stood up at the same time and
+  charged the researchers, attacking, killing and infecting them.
+- Aegis went into high-security lockdown and most of the patients were
+  locked in the cafeteria. It held for only minutes. As the doors
+  locked, the infected looked over the dead and "chose" who would join
+  them. Not everyone: it was very particular. After a few minutes the
+  chosen stood up and joined them.
+- One of the newly infected began to mutate and grow into something
+  that no longer looked human, strong enough to break down doors and
+  break containment (the first Charger). Idea: finding security
+  footage of this (the developer doubts the animation is doable).
+- The facility fell into chaos. A few researchers locked themselves
+  away to work on a cure and study the infected.
 
-Outline the basic story at this point, thinking basically we are some
-specialist operators, investigates strange incidents across the country.
-some generic examples (not necessarily these)
-- A power plant loses contact with the outside world. Emergency workers
-  sent inside never return.
-- A subway station is evacuated after passengers attack one another.
-- An entire rural village stops communicating with nearby towns.
-- A research facility reports a containment failure, then mysteriously
-  deletes its own records.
+9.3 What the Researchers Learned About the Infected
+The infected work together, but some behave differently (the enemy
+types of section 7 and ENEMIES.md):
+- Sirens: look the most human, speak English, indistinguishable from
+  anyone else.
+- Ambushers: stand together in small groups and don't react unless you
+  are close.
+- Hunters: wait for their moment and charge you down.
+- Stalkers: seem to enjoy creeping around; they walk behind you and
+  make little moans before attacking (2026-11-14: they don't speak or
+  whisper; maybe a sinister laugh).
+- Chargers: mutated, no longer human-looking; they use brute force.
 
-We are some incident response team, we basically go to these locations
-with the goal to figure out whats going on, initially the reports assume
-its isolated incidents, eventually discovering everything is connected.
-I have a lot of zombie assets, but we need a unique name for this, will
-also have some other variations, but basically its a zombie. Its possible
-someone could behave normally when infected until the greater host
-decides to trigger them. TO hide the greater organism different beings
-will have different behaviors, some who were recently infected may even
-still speak english. Attacks might appear coordinated (multiple events
-across the country happening at the same time)
+9.4 The Players
+Four researchers, one per player:
+- Dr Fields: Lead Researcher.
+- Dr Hayes: Medical Researcher.
+- Dr Cross: Research Biologist.
+- Dr Shaw: Research Oncologist.
+
+9.5 Opening Sequence
+Introduction (each player wakes in their own office):
+- The player wakes dazed in a small office with no windows. A small
+  scuffle happened there (chair flipped over, papers on the floor),
+  nothing dramatic. The fluorescent light above is blinding; its
+  flicker almost eases the eyes. On the desk: a name plate that can be
+  inspected (Dr Fields), a single flashlight and a key. The only other
+  thing is one door out.
+- The other players wake in similar offices next door (not the same
+  room), one each: Dr Hayes, Dr Cross, Dr Shaw. Each office door is
+  locked, so only the player inside can open it (with the key on their
+  desk).
+Hallway and waiting room:
+- The players step out into a dimly lit hallway, needlessly long, with
+  only a handful of "motivational" posters on the walls.
+- It leads to a small waiting room: 8 to 12 chairs and a receptionist
+  desk, pitch black. Behind the desk the players find a pool of blood
+  and drag marks to a nearby elevator, the only way out.
+Elevator:
+- Calling the elevator, a distant roar is heard. It has a single
+  button: "Lab".
+- An audio tape lies on the elevator floor: a doctor telling an unknown
+  associate about a breakthrough with Hydnellum peckii (Devil's Tooth)
+  as a possible cure for cancer. It plays for about the length of the
+  ride; the lights flicker and the elevator shakes as it goes down.
+The lab:
+- As the doors open and the players walk out, footsteps are heard
+  scurrying away, and in the distance someone cries for help.
+- The laboratory is fairly standard. TODO: detail how the lab looks.
+- Following the cries, the players find a guard: someone lying on the
+  floor of a utility closet who gestures for them to come closer. As
+  the player approaches, the guard stands up and thanks them; they
+  thought they were all alone. TODO: this conversation should be a
+  cutscene. Eventually the guard attacks, trying to bite the player
+  (the cutscene can be button mashing or similar); the player fights
+  back, perhaps hitting them hard in the head with the flashlight. As
+  the cutscene ends the player sees the guard dropped a handgun and
+  picks it up. (The guard is a Siren: see 9.3.)
+- The closet is the only other room in the lab. The only way on is a
+  red door with a 4-digit keypad. TODO: a simple puzzle that shows how
+  to get the numbers.
+Security checkpoint:
+- The red door leads to a security checkpoint, the first enemy the
+  players have to fight: Hunters charge them as soon as they step
+  inside, scaled by player count (1 for 1 to 2 players, 2 for 3, 3 for
+  4).
+- The checkpoint leads to the main research corridor, the central hub
+  of the main research wing. Areas off the corridor:
+  - Administration.
+  - Utilities.
+  - Containment.
+  - Research.
+  - Classified Area.
+  (To be designed.)
+
+9.6 Earlier Direction (superseded 2026-11-13)
+Kept for reference. The developer's notes of 2026-11-04: the players
+were a specialist incident-response team investigating strange
+incidents across the country (a power plant that loses contact, a
+subway station evacuated after passengers attack one another, a rural
+village that stops communicating, a research facility that reports a
+containment failure then deletes its records), thought to be isolated
+but eventually found to be connected; the infected could behave
+normally until a greater host triggers them, some of the newly
+infected still speak English, and attacks might appear coordinated.
+The infected and their "greater host" survive in the new story as the
+Quorum and its Sirens.
 10. Multiplayer Design
 10.1 Established Direction
 - Support 1--4 players.
@@ -344,7 +474,15 @@ revived; enemies can finish off downed players; a downed player cannot
 shoot but can crawl slowly; there is no limit on how many times a player
 can be downed. Whether particular mission types use different failure
 rules remains to be designed.
+Decided (2026-11-12): no healing items. Players have 100 health and heal
+back by themselves: after 5 seconds without being hurt the blood on screen
+clears and health returns slowly (about 20 seconds from nearly dead to
+full). Enemies hit hard instead: most blows take more than half your
+health, the charger's charge kills, and ambushers hit for less since they
+come in packs.
 11. Mission Lifecycle
+On hold (2026-11-13): written for independent missions with a staging
+area; to be reworked for the continuous Aegis story (section 9).
 Every mission should use a consistent lifecycle:
 1. Briefing.
 2. Preparation and loadout selection.
@@ -400,6 +538,11 @@ The first vertical slice should be one small, complete mission lasting
 approximately 10--15 minutes.
 
 Environment: An abandoned modern research facility.
+Update (2026-11-13): the natural first slice is now the opening of the
+story (9.5): offices, hallway, waiting room, elevator, lab, the Siren
+guard, the keypad door and the security checkpoint's Hunters. The
+preparation area, briefing, loadout selection and debrief below are on
+hold.
 
 Players: 1--4 cooperative players.
 Weapons
@@ -683,15 +826,15 @@ AI Agent Guardrails
 These are deliberately unresolved and should be addressed when they
 become relevant.
   Topic                               Current status
-  Game title                          Undecided
+  Game title                          Unitas (developer, 2026-11-12)
 
-  Investigative organization and lore Undecided
+  Investigative organization and lore DECIDED 2026-11-13: Aegis facility, the Quorum (section 9)
 
-  Exact monster designs and mythology Undecided
+  Exact monster designs and mythology The Quorum and its five infected types (9.3, 7); looks to design
 
   Exact weapon roster                 Initial archetypes proposed
 
-  Health and damage model             Undecided
+  Health and damage model             100 health, heals back after 5 s unhurt; no healing items
 
   Ammunition economy                  Undecided
 

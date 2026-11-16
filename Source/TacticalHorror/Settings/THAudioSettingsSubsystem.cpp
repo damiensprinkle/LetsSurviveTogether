@@ -19,6 +19,7 @@ void UTHAudioSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 	MasterVolume = FMath::Clamp(MasterVolume, 0.0f, 1.0f);
 	GunplayVolume = FMath::Clamp(GunplayVolume, 0.0f, 1.0f);
+	MusicVolume = FMath::Clamp(MusicVolume, 0.0f, 1.0f);
 	ApplyMasterVolume(MasterVolume);
 }
 
@@ -41,6 +42,11 @@ void UTHAudioSettingsSubsystem::SetGunplayVolume(float Volume)
 	GunplayVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
 }
 
+void UTHAudioSettingsSubsystem::SetMusicVolume(float Volume)
+{
+	MusicVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
+}
+
 void UTHAudioSettingsSubsystem::SaveSettings()
 {
 	SaveConfig();
@@ -52,6 +58,14 @@ float UTHAudioSettingsSubsystem::GetGunplayVolumeFor(const UObject* WorldContext
 	const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
 	const UTHAudioSettingsSubsystem* Settings = GameInstance ? GameInstance->GetSubsystem<UTHAudioSettingsSubsystem>() : nullptr;
 	return Settings ? Settings->GunplayVolume : 1.0f;
+}
+
+float UTHAudioSettingsSubsystem::GetMusicVolumeFor(const UObject* WorldContext)
+{
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	const UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
+	const UTHAudioSettingsSubsystem* Settings = GameInstance ? GameInstance->GetSubsystem<UTHAudioSettingsSubsystem>() : nullptr;
+	return Settings ? Settings->MusicVolume : 1.0f;
 }
 
 void UTHAudioSettingsSubsystem::ApplyMasterVolume(float Volume) const

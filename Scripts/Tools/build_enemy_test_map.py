@@ -1,13 +1,16 @@
 """Builds /Game/Maps/L_EnemyTest: a small dark level for the first enemies (Milestone 4), from the firing range kit's
 wall and floor pieces. Layout, one cell per 4 m floor tile (x to the right, y down):
 
-        x  0 1 2 3 4 5 6
-     y 0   S S . H H H H     S  start room 8 x 8 m, lit; the players start here, facing the hall
-       1   S S c H H H H     H  hall 16 x 12 m, one light in its far corner, crates for cover
-       2   . c . H H H H     R  side room 8 x 8 m, dark
-       3   . c . . . c .     c  corridors 4 m wide, dark
-       4   R R c c c c .
-       5   R R . . . . .
+        x  0 1 2 3 4 5 6 7 8 9 10
+     y 0   S S . H H H H . . . .     S  start room 8 x 8 m, lit; the players start here, facing the hall
+       1   S S c H H H H . . . .     H  hall 16 x 12 m, one light in its far corner, crates for cover: the stalker
+       2   . c . H H H H C C C C     R  side room 8 x 8 m: the line-up of every body
+       3   . c . . . c . C C C C     C  charger hall 16 x 8 m, lit: room to charge, and to sidestep
+       4   R R c c c c c c c c c     A  ambusher room 8 x 8 m, dark: the pack
+       5   R R . A A . U U . L L     U  hunter room 8 x 8 m, lit: it paces
+       6   . . . A A . U U . L L     L  siren room 8 x 8 m, lit: lying there calling for help
+                                     c  corridors 4 m wide, dark
+Each kind of enemy has its own room (developer, 2026-11-12), off the long corridor (y 4).
 
 Two ways from the start room to the hall (east, or south through the side room and back up), so there is a loop to
 patrol and flank. Doorways are the kit's doorway wall piece with no door. Walls 4.5 m with a ceiling, exposure pinned
@@ -15,7 +18,10 @@ like the range so unlit places stay dark. The navigation mesh is built by this s
 collision, which navigation ignores, so every floor, wall and crate also gets an invisible box (folder NavBlockers).
 After moving things in the editor, rebuild navigation there (Build, Build Paths) or re-run this script.
 
-Re-running replaces the whole level. Not headless (creating a level needs the full editor); editor closed:
+Re-running replaces the whole level. Headless when the level exists (it is rebuilt in place); the first time, making
+the level needs the full editor. Editor closed:
+  UnrealEditor-Cmd.exe "<abs>\LetsSurviveTogether.uproject" -run=pythonscript -script="<abs>/Scripts/Tools/build_enemy_test_map.py" -nullrhi -unattended
+or the first time:
   UnrealEditor.exe "<abs>\\LetsSurviveTogether.uproject" -ExecutePythonScript="<abs>/Scripts/Tools/build_enemy_test_map.py" -RenderOffScreen -unattended -nosound
 """
 import unreal
@@ -30,20 +36,26 @@ INSET = 4.0     # walls stand this far inside their cell, so two cells' walls ar
 EXPOSURE = 1.0
 
 LAYOUT = [
-    "SS.HHHH",
-    "SScHHHH",
-    ".c.HHHH",
-    ".c...c.",
-    "RRcccc.",
-    "RR.....",
+    "SS.HHHH....",
+    "SScHHHH....",
+    ".c.HHHHCCCC",
+    ".c...c.CCCC",
+    "RRccccccccc",
+    "RR.AA.UU.LL",
+    "...AA.UU.LL",
 ]
 # Openings between cells of different areas: ((x, y), (x, y))
 DOORS = [
     ((1, 1), (2, 1)), ((2, 1), (3, 1)),   # start room -> east corridor -> hall
     ((1, 1), (1, 2)), ((1, 3), (1, 4)),   # start room -> south corridor -> side room
     ((1, 4), (2, 4)), ((5, 3), (5, 2)),   # side room -> long corridor -> hall
+    ((8, 4), (8, 3)),                     # long corridor -> charger hall
+    ((3, 4), (3, 5)), ((6, 4), (6, 5)),   # long corridor -> ambusher room, hunter room
+    ((9, 4), (9, 5)),                     # long corridor -> siren room
 ]
-LIGHTS = [(0.5, 0.5), (6.0, 0.0)]  # start room's middle; the hall's far corner (cell coordinates)
+# Start room's middle; the hall's far corner; the charger hall, the hunter room and the siren room (cell coordinates).
+# The ambusher room and the corridors stay dark.
+LIGHTS = [(0.5, 0.5), (6.0, 0.0), (8.5, 2.5), (6.5, 5.5), (9.5, 5.5)]
 CRATES = [(4.0, 0.6), (4.3, 1.7), (5.6, 1.2), (3.6, 2.3)]
 PLAYER_STARTS = [(0.2, 0.0), (0.2, 0.6), (0.2, 1.2), (0.6, 0.3)]
 
@@ -65,13 +77,21 @@ def out(msg):
     unreal.log_warning("[TH EnemyTest] " + msg)
 
 
+def spawn_mesh(mesh, location, rotation):
+    """A static mesh actor (spawned from the class and given the mesh: spawning from the asset goes through the editor's
+    placement code, which crashes headless)."""
+    actor = actors.spawn_actor_from_class(unreal.StaticMeshActor, location, rotation)
+    actor.static_mesh_component.set_static_mesh(mesh)
+    return actor
+
+
 def world(cx, cy, z=FLOOR_Z):
     return unreal.Vector(cx * TILE, cy * TILE, z)
 
 
 def piece(mesh_name, label, rotation, centre):
     """Places a kit mesh so its bounds are centred on `centre` (the kit's pivots are at corners and edges)."""
-    actor = actors.spawn_actor_from_object(eal.load_asset(MESHES + mesh_name), unreal.Vector(0, 0, 0), rotation)
+    actor = spawn_mesh(eal.load_asset(MESHES + mesh_name), unreal.Vector(0, 0, 0), rotation)
     origin, _ = actor.get_actor_bounds(False)
     actor.set_actor_location(centre - origin, False, False)
     actor.static_mesh_component.set_collision_profile_name("BlockAll")
@@ -83,11 +103,11 @@ CUBE = "/Engine/BasicShapes/Cube"  # 100 cm, with simple box collision
 blockers = 0
 
 
-def blocker(label, centre, size):
+def blocker(label, centre, size, rotation=None):
     """An invisible box with simple collision. The kit's pieces only have complex (per-triangle) collision, which the
     navigation mesh doesn't see, so each floor, wall and crate gets one of these where it is."""
     global blockers
-    actor = actors.spawn_actor_from_object(eal.load_asset(CUBE), centre, unreal.Rotator(0, 0, 0))
+    actor = spawn_mesh(eal.load_asset(CUBE), centre, rotation or unreal.Rotator(0, 0, 0))
     actor.set_actor_scale3d(unreal.Vector(size.x / 100.0, size.y / 100.0, size.z / 100.0))
     component = actor.static_mesh_component
     component.set_visibility(False)
@@ -128,8 +148,16 @@ for a, b in DOORS:
     doors.add((b, a))
 
 if eal.does_asset_exist(LEVEL):
-    eal.delete_asset(LEVEL)
-unreal.EditorLevelLibrary.new_level(LEVEL)
+    # Rebuilt in place: works headless too (making a new level needs the full editor)
+    unreal.EditorLoadingAndSavingUtils.load_map(LEVEL)
+    # Only the pieces this script places (meshes, lights, starts, enemies left by setup_enemies.py); the exposure volume,
+    # navigation bounds and navigation mesh are kept and reused below (destroying those headless crashes the engine)
+    for actor in actors.get_all_level_actors():
+        if (isinstance(actor, (unreal.StaticMeshActor, unreal.PlayerStart)) or 'OverheadLight' in actor.get_class().get_name()
+                or str(actor.get_folder_path()).startswith('TH_')):
+            actors.destroy_actor(actor)
+else:
+    unreal.EditorLevelLibrary.new_level(LEVEL)
 
 OPEN_FROM, OPEN_TO, OPEN_TOP = doorway_opening()
 
@@ -192,18 +220,24 @@ for i, (lx, ly) in enumerate(LIGHTS):
     actors.spawn_actor_from_class(light_class, world(lx, ly, FLOOR_Z + HEIGHT), unreal.Rotator(0, 0, 0)).set_actor_label("Light%d" % (i + 1))
 crate = eal.load_asset(MESHES + "SM_Crate")
 for i, (cx, cy) in enumerate(CRATES):
-    actor = actors.spawn_actor_from_object(crate, world(cx, cy), unreal.Rotator(0, 0, 37.0 * i))
+    actor = spawn_mesh(crate, world(cx, cy), unreal.Rotator(0, 0, 37.0 * i))
     origin, extent = actor.get_actor_bounds(False)
     location = actor.get_actor_location()
     actor.set_actor_location(unreal.Vector(location.x, location.y, location.z + FLOOR_Z - (origin.z - extent.z)), False, False)
     actor.set_actor_label("Crate%d" % (i + 1))
-    origin, extent = actor.get_actor_bounds(False)
-    blocker("Crate%d" % (i + 1), origin, unreal.Vector(extent.x * 2, extent.y * 2, extent.z * 2))
+    # Turned with the crate and its own size: the world-aligned bounds of a turned crate stick out past its corners,
+    # an invisible wall enemies hid behind and walked into (developer, 2026-11-12)
+    origin, _ = actor.get_actor_bounds(False)
+    box = crate.get_bounding_box()
+    scale = actor.get_actor_scale3d()
+    blocker("Crate%d" % (i + 1), origin, unreal.Vector((box.max.x - box.min.x) * scale.x, (box.max.y - box.min.y) * scale.y, (box.max.z - box.min.z) * scale.z),
+            actor.get_actor_rotation())
 for i, (px, py) in enumerate(PLAYER_STARTS):
     actors.spawn_actor_from_class(unreal.PlayerStart, world(px, py, FLOOR_Z + 100.0), unreal.Rotator(0, 0, 0)).set_actor_label("PlayerStart%d" % (i + 1))
 
 # Exposure pinned, like the range's
-volume = actors.spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 0))
+existing = [a for a in actors.get_all_level_actors() if isinstance(a, unreal.PostProcessVolume)]
+volume = existing[0] if existing else actors.spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 0))
 volume.set_actor_label("Exposure")
 volume.set_editor_property("unbound", True)
 settings = volume.get_editor_property("settings")
@@ -216,21 +250,25 @@ volume.set_editor_property("settings", settings)
 # Navigation: bounds over the whole layout, generated at runtime
 width = max(x for x, _ in cells) + 1
 depth = max(y for _, y in cells) + 1
-bounds = actors.spawn_actor_from_class(unreal.NavMeshBoundsVolume, world((width - 1) / 2, (depth - 1) / 2, FLOOR_Z + HEIGHT / 2))
+existing = [a for a in actors.get_all_level_actors() if isinstance(a, unreal.NavMeshBoundsVolume)]
+bounds = existing[0] if existing else actors.spawn_actor_from_class(unreal.NavMeshBoundsVolume, world((width - 1) / 2, (depth - 1) / 2, FLOOR_Z + HEIGHT / 2))
+bounds.set_actor_location(world((width - 1) / 2, (depth - 1) / 2, FLOOR_Z + HEIGHT / 2), False, False)
 # A volume spawned from Python has no shape until a brush builder gives it one (Python can't reach the builders)
 if not unreal.THEditorScriptLibrary.build_box_brush(bounds, unreal.Vector(width * TILE + 200.0, depth * TILE + 200.0, HEIGHT + 100.0)):
     raise RuntimeError("Could not shape the navigation bounds")
 bounds.set_actor_label("NavBounds")
 origin, extent = bounds.get_actor_bounds(False)
 out("navigation bounds %s +- %s" % (origin, extent))
-navmesh = actors.spawn_actor_from_class(unreal.RecastNavMesh, unreal.Vector(0, 0, 0))
+existing = [a for a in actors.get_all_level_actors() if isinstance(a, unreal.RecastNavMesh)]
+navmesh = existing[0] if existing else actors.spawn_actor_from_class(unreal.RecastNavMesh, unreal.Vector(0, 0, 0))
 # Static: built here (build_navigation, below) and saved with the level. Nothing in it moves. A full rebuild while
 # playing takes over 20 s, so don't rebuild on load. Switch to Dynamic if doors or moving obstacles are added.
 navmesh.set_editor_property("runtime_generation", unreal.RuntimeGenerationType.STATIC)
 # Its 10 cm voxels come from Config/DefaultEngine.ini (RecastNavMesh): with the default 19 cm the doorways close
 
 out("navigation: " + unreal.THEditorScriptLibrary.build_navigation(unreal.EditorLevelLibrary.get_editor_world(),
-    [world(0.5, 0.5, FLOOR_Z + 50), world(1.5, 0.75, FLOOR_Z + 50), world(1.5, 1.0, FLOOR_Z + 50), world(1.75, 1.0, FLOOR_Z + 50), world(4.5, 1.0, FLOOR_Z + 50), world(0.5, 4.5, FLOOR_Z + 50)]))
-levels.save_current_level()
+    [world(0.5, 0.5, FLOOR_Z + 50), world(1.5, 0.75, FLOOR_Z + 50), world(1.5, 1.0, FLOOR_Z + 50), world(1.75, 1.0, FLOOR_Z + 50), world(4.5, 1.0, FLOOR_Z + 50), world(0.5, 4.5, FLOOR_Z + 50),
+     world(9.0, 2.5, FLOOR_Z + 50), world(3.5, 5.5, FLOOR_Z + 50), world(6.5, 5.5, FLOOR_Z + 50), world(9.5, 5.5, FLOOR_Z + 50), world(8.0, 4.0, FLOOR_Z + 50)]))
+unreal.EditorLoadingAndSavingUtils.save_map(unreal.EditorLevelLibrary.get_editor_world(), LEVEL)
 out("saved %s" % LEVEL)
 unreal.SystemLibrary.quit_editor()

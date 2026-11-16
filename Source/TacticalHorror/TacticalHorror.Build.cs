@@ -22,6 +22,9 @@ public class TacticalHorror : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
 			"AnimationCore",
+			// MetaHuman enemies: the zombie animations retargeted onto their bodies, and their hair (groom)
+			"IKRig",
+			"HairStrandsCore",
 			"AssetRegistry",
 			"EngineSettings",
 			"OnlineSubsystem",

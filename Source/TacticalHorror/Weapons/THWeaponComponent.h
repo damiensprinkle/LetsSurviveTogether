@@ -7,6 +7,7 @@
 class ATHWeaponBase;
 class UAnimInstance;
 class UCameraComponent;
+class UPhysicalMaterial;
 class USkeletalMeshComponent;
 class UTHBodyAnimInstance;
 class UTHBodyAnimSet;
@@ -70,6 +71,9 @@ public:
 	/** Stops firing and aiming, e.g. while downed. Call on every machine (it is driven by replicated state). */
 	UFUNCTION(BlueprintCallable, Category = "Weapons")
 	void SetWeaponsBlocked(bool bBlocked);
+
+	/** True while downed or dead: no firing, aiming or switching. */
+	bool AreWeaponsBlocked() const { return bWeaponsBlocked; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Weapons")
 	FTHWeaponChanged OnWeaponChanged;
@@ -147,6 +151,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Body Animation")
 	TEnumAsByte<ECollisionChannel> BulletTraceChannel = ECC_GameTraceChannel1;
 
+	/** On the body's bones, so shots know they hit flesh (blood, no bullet hole; UTHImpactSurfaces). */
+	UPROPERTY(EditAnywhere, Category = "Body Animation")
+	TSoftObjectPtr<UPhysicalMaterial> BodyPhysicalMaterial = TSoftObjectPtr<UPhysicalMaterial>(FSoftObjectPath(TEXT("/Game/Effects/PhysicalMaterials/PM_Flesh.PM_Flesh")));
+
+	/**
+	 * The local player's camera draws first-person primitives (the weapon with its arms, the hand flashlight) shrunk
+	 * toward the eye by this much, so they look the same but never reach into a wall in front of the player.
+	 * 1 = off. Smaller keeps a longer gun out of walls; too small can show depth-precision flicker on the gun.
+	 */
+	UPROPERTY(EditAnywhere, Category = "Weapons", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float FirstPersonScale = 0.25f;
+
 	/** Body animations with no weapon held, and the legs for weapon sets that have none. */
 	UPROPERTY(EditAnywhere, Category = "Body Animation")
 	TObjectPtr<UTHBodyAnimSet> UnarmedBodyAnimSet;
@@ -192,6 +208,7 @@ private:
 	void SetAiming(bool bNewAiming);
 	void CycleWeapon(int32 Direction);
 	UCameraComponent* FindViewCamera() const;
+	void UpdateFirstPersonScale();
 	void UpdateAimFieldOfView(float DeltaTime);
 
 	/** Moves the first-person weapon from its hip hold so its sights line up with the screen's middle, by AimAlpha. */

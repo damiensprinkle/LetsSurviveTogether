@@ -5,6 +5,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Editor.h"
 #include "Engine/Engine.h"
@@ -33,6 +34,18 @@ namespace THTestHelpers
 	{
 		const UWorld* World = GetPlayWorld();
 		return World ? World->GetTimeSeconds() : 0.0;
+	}
+
+	/** The middle of a bone's physics body, where a shot at that bone should aim (the bone's own point is its joint:
+	 *  the head's sits at the neck). The bone's point if it has no body. */
+	inline FVector BodyCentre(const USkeletalMeshComponent* Mesh, FName Bone)
+	{
+		if (!Mesh)
+		{
+			return FVector::ZeroVector;
+		}
+		const FBodyInstance* Body = Mesh->GetBodyInstance(Bone);
+		return Body && Body->IsValidBodyInstance() ? Body->GetBodyBounds().GetCenter() : Mesh->GetBoneLocation(Bone);
 	}
 
 	/** Whether any spot light on the actor is shown (weapon light beam, flashlight beam). */

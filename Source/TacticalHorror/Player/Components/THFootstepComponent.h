@@ -6,6 +6,7 @@
 #include "THFootstepComponent.generated.h"
 
 class ACharacter;
+class USkeletalMeshComponent;
 class USoundAttenuation;
 class USoundBase;
 
@@ -29,8 +30,8 @@ struct FTHFootstepSounds
 };
 
 /**
- * Plays footsteps from distance travelled on the ground, so they work with any animation and on every machine
- * (simulated proxies included) without RPCs. The surface is read from the physical material under the feet.
+ * Plays footsteps from distance travelled on the ground, or as a foot lands (FootBones), so they work with any animation
+ * and on every machine (simulated proxies included) without RPCs. The surface is read from the physical material under the feet.
  */
 UCLASS(ClassGroup = (TacticalHorror), meta = (BlueprintSpawnableComponent))
 class TACTICALHORROR_API UTHFootstepComponent : public UActorComponent
@@ -85,9 +86,57 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps", meta = (Units = "cm/s"))
 	float MinStepSpeed = 20.0f;
 
+	/**
+	 * How loud each kind of step is to enemies: heard within this many times their hearing range
+	 * (UTHEnemyBehavior::HearingRange). Walking quietly (Shift, aiming) and crouching are much harder to hear.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear", meta = (ClampMin = 0))
+	float SprintNoise = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear", meta = (ClampMin = 0))
+	float WalkNoise = 0.6f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear", meta = (ClampMin = 0))
+	float QuietNoise = 0.25f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear", meta = (ClampMin = 0))
+	float CrouchNoise = 0.12f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear", meta = (ClampMin = 0))
+	float LandNoise = 0.8f;
+
+	/** Steps are noises enemies hear (players). Off for enemies' own steps. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Enemies hear")
+	bool bMakesNoise = true;
+
 	/** Landing faster than this (downward) plays a landing sound. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps", meta = (Units = "cm/s"))
 	float MinLandSpeed = 300.0f;
+
+	/**
+	 * Feet (bones of SetFootMesh's mesh): a step plays as one lands, so it lines up with the animation (developer, 2026-11-16:
+	 * the charger's stomps didn't), rather than every stride's distance. Feet that barely lift (a shuffle) still step once
+	 * well past a stride. Empty, or no such bones: by distance only (the players: no body of their own to watch).
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet")
+	TArray<FName> FootBones;
+
+	/** A foot this far above the lowest it has been lately is off the floor... */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet", meta = (Units = "cm", ClampMin = 1))
+	float FootLiftHeight = 8.0f;
+
+	/** ...and back down within this of it, it has landed. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet", meta = (Units = "cm", ClampMin = 0))
+	float FootPlantHeight = 3.0f;
+
+	void SetFootMesh(USkeletalMeshComponent* Mesh);
+
+	/** Steps of its own, whatever the floor (a charger's stomp), one at random per walk or run step; empty = by surface. */
+	void SetStepSoundOverride(const TArray<TObjectPtr<USoundBase>>& Sounds, float Volume = 1.0f) { StepSoundOverride = Sounds; StepOverrideVolume = Volume; }
+
+	/** Steps played so far, and how many of them a foot landing set off (tests). */
+	int32 GetStepCount() const { return StepCount; }
+	int32 GetFootLandingCount() const { return FootLandingCount; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -97,8 +146,26 @@ private:
 
 	void PlayStep(EStep Kind);
 	const FTHFootstepSounds& GetSoundsUnderFeet() const;
+	/** Follows the feet; true when one has just landed. */
+	bool UpdateFeet(float DeltaTime);
+
+	struct FFoot
+	{
+		FName Bone;
+		float Floor = 0.0f;	// cm above the capsule's bottom: the lowest lately (it creeps up, for slopes and stairs)
+		bool bHasFloor = false;
+		bool bLifted = false;
+	};
+	TArray<FFoot> TrackedFeet;
+	TWeakObjectPtr<USkeletalMeshComponent> FootMesh;
+	double LastStepTime = -1.0;
+	int32 StepCount = 0;
+	int32 FootLandingCount = 0;
 
 	TWeakObjectPtr<ACharacter> Character;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USoundBase>> StepSoundOverride;
+	float StepOverrideVolume = 1.0f;
 	float DistanceSinceStep = 0.0f;
 	bool bWasFalling = false;
 	float FallSpeed = 0.0f;

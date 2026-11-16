@@ -1,5 +1,8 @@
 #include "Debug/THEditorScriptLibrary.h"
 
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimData/IAnimationDataModel.h"
+#include "Animation/Skeleton.h"
 #include "Engine/Brush.h"
 
 #include "NavMesh/RecastNavMesh.h"
@@ -61,4 +64,80 @@ bool UTHEditorScriptLibrary::BuildBoxBrush(ABrush* Brush, FVector Size)
 #else
 	return false;
 #endif
+}
+
+int32 UTHEditorScriptLibrary::KeepOwnBoneLengths(USkeleton* Skeleton, FName PelvisBone)
+{
+#if WITH_EDITOR
+	if (!Skeleton)
+	{
+		return 0;
+	}
+	const FReferenceSkeleton& Reference = Skeleton->GetReferenceSkeleton();
+	const int32 PelvisIndex = Reference.FindBoneIndex(PelvisBone);
+	int32 Changed = 0;
+	for (int32 Index = 0; Index < Reference.GetNum(); ++Index)
+	{
+		const EBoneTranslationRetargetingMode::Type Wanted = Index == 0 ? EBoneTranslationRetargetingMode::Animation
+			: Index == PelvisIndex ? EBoneTranslationRetargetingMode::AnimationScaled
+			: EBoneTranslationRetargetingMode::Skeleton;
+		if (Skeleton->GetBoneTranslationRetargetingMode(Index) != Wanted)
+		{
+			Skeleton->SetBoneTranslationRetargetingMode(Index, Wanted);
+			++Changed;
+		}
+	}
+	if (Changed > 0)
+	{
+		Skeleton->MarkPackageDirty();
+	}
+	return Changed;
+#else
+	return -1;
+#endif
+}
+
+TArray<FVector> UTHEditorScriptLibrary::GetBonePath(UAnimSequence* Animation, FName Bone, FName RelativeTo, int32 Steps)
+{
+	TArray<FVector> Path;
+#if WITH_EDITOR
+	const USkeleton* Skeleton = Animation ? Animation->GetSkeleton() : nullptr;
+	if (!Skeleton || Steps < 1)
+	{
+		return Path;
+	}
+	const FReferenceSkeleton& Reference = Skeleton->GetReferenceSkeleton();
+	const IAnimationDataModel* Model = Animation->GetDataModel();
+	const int32 BoneIndex = Reference.FindBoneIndex(Bone);
+	const int32 RelativeIndex = RelativeTo.IsNone() ? INDEX_NONE : Reference.FindBoneIndex(RelativeTo);
+	if (BoneIndex == INDEX_NONE || (!RelativeTo.IsNone() && RelativeIndex == INDEX_NONE))
+	{
+		return Path;
+	}
+
+	// Component-space position of a bone at a time: its chain of local transforms (reference pose where untracked)
+	auto Position = [&](int32 Index, double Time)
+	{
+		FTransform Result = FTransform::Identity;
+		for (; Index != INDEX_NONE; Index = Reference.GetParentIndex(Index))
+		{
+			FTransform Local = Reference.GetRefBonePose()[Index];
+			if (Model && Model->IsValidBoneTrackName(Reference.GetBoneName(Index)))
+			{
+				Animation->GetBoneTransform(Local, FSkeletonPoseBoneIndex(Index), FAnimExtractContext(Time), true);
+			}
+			Result = Result * Local;
+		}
+		return Result.GetLocation();
+	};
+
+	const double Length = Animation->GetPlayLength();
+	for (int32 Step = 0; Step <= Steps; ++Step)
+	{
+		const double Time = Length * Step / Steps;
+		const FVector Location = Position(BoneIndex, Time);
+		Path.Add(RelativeIndex == INDEX_NONE ? Location : Location - Position(RelativeIndex, Time));
+	}
+#endif
+	return Path;
 }

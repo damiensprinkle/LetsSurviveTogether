@@ -2,11 +2,15 @@
 #include "UI/THAudioSettingsWidget.h"
 #include "UI/THCrosshairWidget.h"
 #include "UI/THAmmoWidget.h"
+#include "UI/THStatusWidget.h"
+#include "Player/THCameraModifier.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Multiplayer/THSessionSubsystem.h"
 #include "GameMapsSettings.h"
 #include "Kismet/GameplayStatics.h"
 #include "TacticalHorror.h"
 #include "Settings/THAudioSettingsSubsystem.h"
+#include "Settings/THControlsSettingsSubsystem.h"
 #include "Weapons/THWeaponBase.h"
 #include "Weapons/THWeaponComponent.h"
 #include "Components/InputComponent.h"
@@ -18,6 +22,7 @@ ATHPlayerController::ATHPlayerController()
 	AudioSettingsWidgetClass = UTHAudioSettingsWidget::StaticClass();
 	CrosshairWidgetClass = UTHCrosshairWidget::StaticClass();
 	AmmoWidgetClass = UTHAmmoWidget::StaticClass();
+	StatusWidgetClass = UTHStatusWidget::StaticClass();
 }
 
 void ATHPlayerController::BeginPlay()
@@ -48,6 +53,47 @@ void ATHPlayerController::BeginPlay()
 			AmmoWidget->AddToViewport(-10);
 		}
 	}
+	if (StatusWidgetClass)
+	{
+		StatusWidget = CreateWidget<UTHStatusWidget>(this, StatusWidgetClass);
+		if (StatusWidget)
+		{
+			StatusWidget->AddToViewport(5);
+		}
+	}
+	if (PlayerCameraManager)
+	{
+		BodyCameraModifier = Cast<UTHCameraModifier>(PlayerCameraManager->AddNewCameraModifier(UTHCameraModifier::StaticClass()));
+	}
+}
+
+float ATHPlayerController::GetLookScale() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	const UTHControlsSettingsSubsystem* Controls = GameInstance ? GameInstance->GetSubsystem<UTHControlsSettingsSubsystem>() : nullptr;
+	if (!Controls)
+	{
+		return 1.0f;
+	}
+	float AimAlpha = 0.0f;
+	if (const APawn* MyPawn = GetPawn())
+	{
+		if (const UTHWeaponComponent* Weapons = MyPawn->FindComponentByClass<UTHWeaponComponent>())
+		{
+			AimAlpha = Weapons->GetAimAlpha();
+		}
+	}
+	return Controls->GetLookSensitivity() * FMath::Lerp(1.0f, Controls->GetAimSensitivity(), AimAlpha);
+}
+
+void ATHPlayerController::AddYawInput(float Val)
+{
+	Super::AddYawInput(Val * GetLookScale());
+}
+
+void ATHPlayerController::AddPitchInput(float Val)
+{
+	Super::AddPitchInput(Val * GetLookScale());
 }
 
 void ATHPlayerController::LeaveGame()
@@ -107,6 +153,11 @@ void ATHPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		AmmoWidget->RemoveFromParent();
 		AmmoWidget = nullptr;
+	}
+	if (StatusWidget)
+	{
+		StatusWidget->RemoveFromParent();
+		StatusWidget = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
 }
@@ -182,5 +233,19 @@ void ATHPlayerController::CloseAudioSettings()
 	if (UTHAudioSettingsSubsystem* Settings = GetGameInstance() ? GetGameInstance()->GetSubsystem<UTHAudioSettingsSubsystem>() : nullptr)
 	{
 		Settings->SaveSettings();
+	}
+}
+
+void ATHPlayerController::NotifyLocalHit(float Damage)
+{
+	// About 40 damage (an enemy's blow) is a full-strength hit
+	const float Strength = FMath::Clamp(Damage / 40.0f, 0.25f, 1.5f);
+	if (BodyCameraModifier)
+	{
+		BodyCameraModifier->AddHit(Strength);
+	}
+	if (StatusWidget)
+	{
+		StatusWidget->ShowHit(Strength);
 	}
 }

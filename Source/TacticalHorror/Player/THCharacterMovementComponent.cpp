@@ -1,5 +1,6 @@
 #include "Player/THCharacterMovementComponent.h"
 #include "Player/THCharacter.h"
+#include "Player/Components/THHealthComponent.h"
 
 namespace
 {
@@ -62,9 +63,31 @@ namespace
 	};
 }
 
+namespace
+{
+	bool IsDowned(const ACharacter* Character)
+	{
+		const ATHCharacter* THCharacter = Cast<ATHCharacter>(Character);
+		const UTHHealthComponent* Health = THCharacter ? THCharacter->GetHealthComponent() : nullptr;
+		return Health && Health->GetHealthState() == ETHHealthState::Downed;
+	}
+}
+
+void UTHCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
+{
+	// Health state replicates to the owner and the server, so both hold the same crouch and their moves agree
+	if (IsDowned(CharacterOwner))
+	{
+		bWantsToCrouch = true;
+	}
+	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+}
+
 float UTHCharacterMovementComponent::GetMaxSpeed() const
 {
-	const bool bStandingWalk = (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking) && !IsCrouching();
+	// Downed players are held crouched but crawl at the downed share of the standing speed
+	const bool bOnGround = MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking;
+	const bool bStandingWalk = bOnGround && (!IsCrouching() || IsDowned(CharacterOwner));
 	const float BaseSpeed = bStandingWalk
 		? StandingWalkSpeed * (bWantsToWalkQuietly ? QuietWalkMultiplier : 1.0f)
 		: Super::GetMaxSpeed();

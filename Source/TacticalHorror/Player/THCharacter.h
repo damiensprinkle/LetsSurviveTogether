@@ -6,6 +6,7 @@
 #include "THCharacter.generated.h"
 
 class UInputAction;
+class USoundBase;
 class UTHDoorSyncComponent;
 class UTHPressableComponent;
 class UTHWeaponComponent;
@@ -61,6 +62,45 @@ public:
 	/** The hold-to-turn key for valve doors (F by default). */
 	const UInputAction* GetValveAction() const { return ValveAction; }
 
+	// Voice and body sounds, played on every machine (one picked at random; empty = silent)
+
+	/** Hurt (any drop in health), at most every HurtSoundCooldown. */
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	TArray<TSoftObjectPtr<USoundBase>> HurtSounds;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds", meta = (Units = "s"))
+	float HurtSoundCooldown = 0.5f;
+
+	/** Leaving the ground upwards (a jump). */
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	TArray<TSoftObjectPtr<USoundBase>> JumpSounds;
+
+	/** A death stinger, not placed in the world: full volume for the one who died, OtherPlayerDeathVolume for the others. */
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	TArray<TSoftObjectPtr<USoundBase>> DeathSounds;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds", meta = (ClampMin = 0))
+	float OtherPlayerDeathVolume = 0.6f;
+
+	/** How far the hurt and jump voices carry. */
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	TSoftObjectPtr<class USoundAttenuation> VoiceAttenuation;
+
+	/**
+	 * Dead, the body plays one of these (picked by the server, the same everywhere) and stays as it ends: Darkania Works'
+	 * Dramatic Death performances (developer, 2026-11-11: comic relief). Empty = it falls as a ragdoll.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Death")
+	TArray<TSoftObjectPtr<class UAnimSequence>> DeathPerformances;
+
+	/** The death performance playing on this machine, if any (for tests). */
+	class UAnimSequence* GetDeathPerformance() const;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** The last voice or body sound played for this character on this machine (for tests). */
+	USoundBase* GetLastSound() const { return LastSound.Get(); }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -72,6 +112,37 @@ protected:
 
 	UFUNCTION()
 	void HandleHealthStateChanged(UTHHealthComponent* Health, ETHHealthState NewState, ETHHealthState OldState);
+
+	/** On the owning machine, a drop in health is a hit: tell the player controller (view jolt, blood on screen). */
+	UFUNCTION()
+	void HandleHealthChanged(UTHHealthComponent* Health, float NewHealth, AActor* DamageCauser);
+
+	/** Dead: the body falls (on every machine, not synced) and the first-person weapon leaves the owner's view. */
+	void BecomeRagdoll();
+
+	float LastSeenHealth = -1.0f;
+	/** Plays one of Sounds: from the body (attenuated) or, b2D, not placed. */
+	void PlayRandomSound(const TArray<TSoftObjectPtr<USoundBase>>& Sounds, bool b2D, float Volume = 1.0f);
+	double NextHurtSoundTime = 0.0;
+	bool bWasOnGround = true;
+	TWeakObjectPtr<USoundBase> LastSound;
+	bool bRagdoll = false;
+
+	/** Which of DeathPerformances, picked by the server as they die; 255 = none yet. */
+	UPROPERTY(ReplicatedUsing = OnRep_DeathPerformance)
+	uint8 DeathPerformance = 255;
+
+	UFUNCTION()
+	void OnRep_DeathPerformance();
+
+	/** Plays the picked death performance on the body (once it is dead and the pick is known here). */
+	void PlayDeathPerformance();
+	bool bPlayingDeathPerformance = false;
+
+public:
+	bool IsRagdoll() const { return bRagdoll; }
+
+protected:
 
 	/** Blueprint hook for presentation: camera drop, post-process, ragdoll, etc. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Health", meta = (DisplayName = "On Health State Changed"))
@@ -126,6 +197,37 @@ protected:
 
 private:
 	bool CanReviveTarget(const ATHCharacter* Target) const;
+
+	/** This machine's player: their lights flicker with a stalker near (its Light Flicker Distance; the closer, the worse),
+	 *  each back to its own brightness after. */
+	void UpdateLightFlicker(float DeltaSeconds);
+	TMap<TWeakObjectPtr<class ULightComponent>, float> FlickerBase;
+	float FlickerLevel = 1.0f;
+	double NextFlicker = 0.0;
+	double NextFlickerSound = 0.0;
+
+protected:
+	/** A stalker near: how long the lights stay on between flickers (s, at random; shorter the closer it is, down to half). */
+	UPROPERTY(EditDefaultsOnly, Category = "Flicker")
+	FVector2D FlickerSteadyTime = FVector2D(0.6, 1.6);
+
+	/** How long each dip or cut lasts (s, at random). (Developer, 2026-11-14: it flickered too quickly; was 0.04-0.18 s each.) */
+	UPROPERTY(EditDefaultsOnly, Category = "Flicker")
+	FVector2D FlickerDipTime = FVector2D(0.12, 0.35);
+
+	/** Played at the player's light as it cuts out or dips (one at random; at most every Flicker Sound Gap). Only they hear it. */
+	UPROPERTY(EditDefaultsOnly, Category = "Flicker")
+	TArray<TObjectPtr<USoundBase>> FlickerSounds;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Flicker", meta = (Units = "s"))
+	float FlickerSoundGap = 0.8f;
+
+public:
+	/** How much a stalker near has its lights flickering now (0 none .. 1 right next to it; tests). */
+	float GetLightFlickerStrength() const { return FlickerStrength; }
+
+private:
+	float FlickerStrength = 0.0f;
 
 	UFUNCTION(Server, Reliable)
 	void ServerPress(UTHPressableComponent* Target);

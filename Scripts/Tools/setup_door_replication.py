@@ -52,6 +52,17 @@ for path, (component_name, component_class, sounds) in SETUP.items():
     component = lib.get_object(lib.get_data(handle))
     for prop, cue in sounds.items():
         component.set_editor_property(prop, eal.load_asset(CUES + cue))
+    # Doors anyone can open don't block the navigation mesh: enemies walk up to them and open them (developer, 2026-11-13).
+    # Locked ones (BP_DoorLock, BP_ValveDoor) still do. On the Blueprint's own parts: set on a placed door, its
+    # construction script brings them back
+    if component_class == unreal.THDoorSyncComponent:
+        cleared = 0
+        for each in handles:
+            part = lib.get_object(lib.get_data(each))
+            if isinstance(part, unreal.ActorComponent) and part.get_editor_property("can_ever_affect_navigation"):
+                part.set_editor_property("can_ever_affect_navigation", False)
+                cleared += 1
+        unreal.log_warning("[TH Doors] %s: %d parts no longer block navigation" % (path.split("/")[-1], cleared))
     unreal.BlueprintEditorLibrary.compile_blueprint(bp)
     default = unreal.get_default_object(eal.load_blueprint_class(path))
     default.set_editor_property("replicates", True)

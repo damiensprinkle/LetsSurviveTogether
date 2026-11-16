@@ -11,7 +11,8 @@ class UTextBlock;
 DECLARE_DELEGATE(FTHOnMenuCloseRequested);
 
 /**
- * Settings panel (P / Escape in game, Settings on the main menu). Audio: one slider per volume in
+ * Settings panel (P / Escape in game, Settings on the main menu). Controls: look and aim-down-sights sensitivity,
+ * from UTHControlsSettingsSubsystem, and a converter from other games' sensitivity. Audio: one slider per volume in
  * UTHAudioSettingsSubsystem. Crosshair: style (previous / next with a live preview), size and R / G / B colour, from
  * UTHCrosshairSettingsSubsystem. (The class keeps its original "audio" name; it is the general settings panel.)
  * The layout is built in code so it works without a Widget Blueprint; a Blueprint subclass can replace it by giving
@@ -34,7 +35,7 @@ protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
-	/** Saves the crosshair choice when the panel closes (audio is saved by whoever closes it). */
+	/** Saves the controls and crosshair choices when the panel closes (audio is saved by whoever closes it). */
 	virtual void NativeDestruct() override;
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
@@ -44,8 +45,13 @@ private:
 	USlider* AddSliderRow(UVerticalBox* Box, const FText& Label, float Min, float Max, float Step, TObjectPtr<UTextBlock>& OutValueText);
 	USlider* AddVolumeRow(UVerticalBox* Box, const FText& Label, TObjectPtr<UTextBlock>& OutValueText);
 	void AddCrosshairStyleRow(UVerticalBox* Box);
+	void AddSensitivityConverterRows(UVerticalBox* Box);
+	void RefreshConverterGame();
+	void RefreshSensitivityControls();
 	class UTHAudioSettingsSubsystem* GetSettings() const;
 	class UTHCrosshairSettingsSubsystem* GetCrosshairSettings() const;
+	class UTHControlsSettingsSubsystem* GetControlsSettings() const;
+	static FText FormatSensitivity(float Value);
 	static FText FormatPercent(float Value);
 	void RefreshCrosshairControls();
 	void SetColorChannel(int32 Channel, float Value);
@@ -55,6 +61,27 @@ private:
 
 	UFUNCTION()
 	void HandleGunplayChanged(float Value);
+
+	UFUNCTION()
+	void HandleMusicChanged(float Value);
+
+	UFUNCTION()
+	void HandleLookSensitivityChanged(float Value);
+
+	UFUNCTION()
+	void HandleAimSensitivityChanged(float Value);
+
+	UFUNCTION()
+	void HandlePreviousConverterGame();
+
+	UFUNCTION()
+	void HandleNextConverterGame();
+
+	UFUNCTION()
+	void HandleConvertClicked();
+
+	UFUNCTION()
+	void HandleTheirSensitivityCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
 	UFUNCTION()
 	void HandlePreviousStyle();
@@ -99,14 +126,44 @@ private:
 	TObjectPtr<UTextBlock> ColorValueTexts[3];
 
 	UPROPERTY(Transient)
+	TObjectPtr<USlider> LookSensitivitySlider;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> LookSensitivityValueText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USlider> AimSensitivitySlider;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> AimSensitivityValueText;
+
+	/** Sensitivity converter: which game (index into UTHControlsSettingsSubsystem::GetOtherGames), their value, the outcome. */
+	int32 ConverterGame = 0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ConverterGameText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<class UEditableTextBox> TheirSensitivityBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ConverterResultText;
+
+	UPROPERTY(Transient)
 	TObjectPtr<USlider> MasterSlider;
 
 	UPROPERTY(Transient)
 	TObjectPtr<USlider> GunplaySlider;
 
 	UPROPERTY(Transient)
+	TObjectPtr<USlider> MusicSlider;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MasterValueText;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> GunplayValueText;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> MusicValueText;
 };

@@ -11,6 +11,10 @@
 #include "Engine/StaticMesh.h"
 #include "EnhancedInputSubsystems.h"
 #include "EngineUtils.h"
+#include "Enemies/THEnemyAIController.h"
+#include "Enemies/THEnemyBehavior.h"
+#include "Enemies/THEnemyCharacter.h"
+#include "Player/Components/THHealthComponent.h"
 #include "FileHelpers.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -22,6 +26,11 @@
 #include "Multiplayer/THLockedDoorComponent.h"
 #include "Multiplayer/THValveDoorComponent.h"
 #include "Player/THCharacter.h"
+#include "Animation/AnimSequence.h"
+#include "Player/THPlayerController.h"
+#include "UI/THStatusWidget.h"
+#include "GameFramework/Character.h"
+#include "Kismet/GameplayStatics.h"
 #include "Range/THTargetButton.h"
 #include "Range/THTargetCarrier.h"
 #include "Settings/LevelEditorPlaySettings.h"
@@ -517,6 +526,38 @@ bool FTHDoorSyncTest::RunTest(const FString& Parameters)
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(4.0));
 	ExpectDoor(false, TEXT("The client's door goes back after the refused press"), TEXT("BP_Door_C"));
 
+	// Slammed open (a charging enemy; developer, 2026-11-13: the charger ran into the slowly opening door): it swings wide
+	// at once on both machines, and afterwards opens at its own pace again
+	Step([]() { Teleport(true, FVector2D(-340.0, -170.0)); Teleport(false, FVector2D(100.0, -300.0)); });
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.3));
+	Step([this]()
+	{
+		AActor* Door = FindDoor(ServerWorld());
+		UTHDoorSyncComponent* Sync = Door ? Door->FindComponentByClass<UTHDoorSyncComponent>() : nullptr;
+		if (TestNotNull(TEXT("The door has its sync component"), Sync))
+		{
+			Sync->HandleRequest(FindPlayer(ServerWorld(), true), true, true);
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.6));
+	Step([this]()
+	{
+		TestTrue(TEXT("Slammed, the door is wide open on the server within 0.6 s"), DoorMatches(ServerWorld(), true));
+		TestTrue(TEXT("and on the client"), DoorMatches(ClientWorld(), true));
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([]() { CallInteract(FindDoor(ServerWorld()), LocalPawn(true)); });
+	ExpectDoor(false, TEXT("The slammed door closed by the host"), TEXT("BP_Door_C"));
+	Step([]() { CallInteract(FindDoor(ServerWorld()), LocalPawn(true)); });
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.6));
+	Step([this]()
+	{
+		TestFalse(TEXT("Opened normally afterwards, it swings at its own pace (not yet wide open after 0.6 s)"), DoorMatches(ServerWorld(), true));
+	});
+	ExpectDoor(true, TEXT("The door opened normally after the slam"), TEXT("BP_Door_C"));
+	Step([]() { CallInteract(FindDoor(ServerWorld()), LocalPawn(true)); });
+	ExpectDoor(false, TEXT("The door closed again"), TEXT("BP_Door_C"));
+
 	// The other plain doors, spawned by the server and already opened when the client first hears of them:
 	// also what a player joining late sees
 	for (const FString& Name : TArray<FString>{ TEXT("BP_Outward_Door"), TEXT("BP_SlideDoor") })
@@ -535,6 +576,55 @@ bool FTHDoorSyncTest::RunTest(const FString& Parameters)
 		Step([Prefix]() { CallInteract(FindDoor(ServerWorld(), Prefix), LocalPawn(true)); });
 		ExpectDoor(false, Name + TEXT(" closed by the host"), Prefix);
 	}
+
+	// The outward door swings away from whoever opened it, worked out from where they stand: with the host and the client
+	// on opposite sides, each machine used to swing it its own way (developer, 2026-11-13). Now both follow the server.
+	Step([]()
+	{
+		if (AActor* Old = FindDoor(ServerWorld(), TEXT("BP_Outward_Door_C")))
+		{
+			Old->Destroy();
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
+	Step([]()
+	{
+		const FVector Host = LocalPawn(true)->GetActorLocation();
+		const FVector Client = LocalPawn(false)->GetActorLocation();
+		// Midway between them, turned so they stand on opposite sides of its swing (forward - right along host to client)
+		const FVector Mid = (Host + Client) * 0.5;
+		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Client.Y - Host.Y, Client.X - Host.X)) + 45.0;
+		UClass* DoorClass = LoadClass<AActor>(nullptr, TEXT("/Game/Template/Interaction/Blueprint/Door/BP_Outward_Door.BP_Outward_Door_C"));
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ServerWorld()->SpawnActor<AActor>(DoorClass, FVector(Mid.X, Mid.Y, -116.0), FRotator(0.0, Yaw, 0.0), Params);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([]() { CallInteract(FindDoor(ServerWorld(), TEXT("BP_Outward_Door_C")), LocalPawn(true)); });
+	ExpectDoor(true, TEXT("The outward door between the two players opened by the host"), TEXT("BP_Outward_Door_C"));
+	Step([this]()
+	{
+		auto Yaw = [](const AActor* Door)
+		{
+			TInlineComponentArray<UStaticMeshComponent*> Meshes(Door);
+			for (const UStaticMeshComponent* Mesh : Meshes)
+			{
+				if (Mesh->GetName() == TEXT("Door"))
+				{
+					return Mesh->GetRelativeRotation().Yaw;
+				}
+			}
+			return 0.0;
+		};
+		const AActor* OnServer = FindDoor(ServerWorld(), TEXT("BP_Outward_Door_C"));
+		const AActor* OnClient = FindDoor(ClientWorld(), TEXT("BP_Outward_Door_C"));
+		const double ServerYaw = OnServer ? Yaw(OnServer) : 0.0;
+		const double ClientYaw = OnClient ? Yaw(OnClient) : 0.0;
+		AddInfo(FString::Printf(TEXT("Outward door between the players: swung %.0f deg on the server, %.0f on the client"), ServerYaw, ClientYaw));
+		TestTrue(TEXT("It swings the same way on both machines"), FMath::Abs(ServerYaw) > 45.0 && FMath::Abs(ServerYaw - ClientYaw) < 10.0);
+	});
+	Step([]() { CallInteract(FindDoor(ServerWorld(), TEXT("BP_Outward_Door_C")), LocalPawn(true)); });
+	ExpectDoor(false, TEXT("The outward door between the players closed again"), TEXT("BP_Outward_Door_C"));
 
 	EndPlay(this);
 	return true;
@@ -1230,6 +1320,411 @@ bool FTHTargetCarrierTest::RunTest(const FString& Parameters)
 	ExpectStopped(TEXT("The client let go of SEND"));
 	HoldButton(true, 1, TEXT("the host holding RETURN to bring it back 1 m"), [](float Moved) { return Moved < -100.0f; });
 	ExpectStopped(TEXT("The host let go of RETURN"));
+
+	EndPlay(this);
+	return true;
+}
+
+// Enemies: the server spawns a zombie in front of the client's player; the client headshots it; the server kills it and
+// the client sees it die and fall as a ragdoll
+
+namespace THMultiplayerEnemy
+{
+	static ATHEnemyCharacter* EnemyOn(UWorld* World)
+	{
+		for (TActorIterator<ATHEnemyCharacter> It(World); It; ++It)
+		{
+			return *It;
+		}
+		return nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHEnemyKillTest, "TacticalHorror.Multiplayer.EnemyKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHEnemyKillTest::RunTest(const FString& Parameters)
+{
+	using namespace THMultiplayerEnemy;
+	using namespace THMultiplayerLocks;
+
+	StartListenServer(this);
+	Step([this]()
+	{
+		UClass* Class = LoadClass<ATHEnemyCharacter>(nullptr, TEXT("/Game/Enemies/BP_Zombie.BP_Zombie_C"));
+		APawn* ClientPlayer = FindPlayer(ServerWorld(), false);
+		if (!TestNotNull(TEXT("The zombie Blueprint loads (setup_enemies.py)"), Class) || !ClientPlayer)
+		{
+			return;
+		}
+		const FVector Forward = ClientPlayer->GetActorForwardVector().GetSafeNormal2D();
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		TestNotNull(TEXT("Zombie spawned on the server"), ServerWorld()->SpawnActor<ATHEnemyCharacter>(Class,
+			ClientPlayer->GetActorLocation() + Forward * 500.0f, (-Forward).Rotation(), Params));
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client to have the zombie"), 10.0, []() { return EnemyOn(ClientWorld()) != nullptr; }));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.5));
+
+	// The client aims at the head where it sees it and fires; enemies have 200 health, an M4 headshot does about 130, so
+	// twice. It re-aims every frame until its own aim trace is on the head (the idle sways it), then fires that frame.
+	// Up to four shots, stopping when it dies: one can still miss (the server's pose isn't exactly what the client sees)
+	for (int32 Shot = 1; Shot <= 4; ++Shot)
+	{
+		// Aimed at the head where the server has it (the server judges the hit; the client's copy of the idle sway can
+		// be a little off), checked with the server's trace from the client's view
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client's aim to be on the zombie's head"), 2.0, []()
+		{
+			const ATHEnemyCharacter* Enemy = EnemyOn(ServerWorld());
+			APawn* Me = FindPlayer(ClientWorld(), true);
+			const APawn* MeOnServer = FindPlayer(ServerWorld(), false);
+			const APlayerController* Controller = Me ? Cast<APlayerController>(Me->GetController()) : nullptr;
+			if (!Enemy || Enemy->IsDead() || !Controller || !MeOnServer)
+			{
+				return true;
+			}
+			FVector Eyes;
+			FRotator View;
+			Controller->GetPlayerViewPoint(Eyes, View);
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(THTestAim), false, MeOnServer);
+			Params.AddIgnoredActor(Held(Weapons(const_cast<APawn*>(MeOnServer))));
+			FHitResult Hit;
+			ServerWorld()->LineTraceSingleByChannel(Hit, Eyes, Eyes + View.Vector() * 10000.0f, ECC_GameTraceChannel1, Params);
+			if (Hit.GetActor() == Enemy && Hit.BoneName == TEXT("head"))
+			{
+				return true;
+			}
+			LookAt(Me, BodyCentre(Enemy->GetMesh(), TEXT("head")));
+			return false;
+		}));
+		Step([this, Shot]()
+		{
+			const ATHEnemyCharacter* Enemy = EnemyOn(ServerWorld());
+			if (Enemy && !Enemy->IsDead())
+			{
+				ATHWeaponBase* Gun = Held(ClientOnClient());
+				AddInfo(FString::Printf(TEXT("Shot %d: server health %.0f, client ammo %d"), Shot, Enemy->GetHealthComponent()->GetHealth(), Gun->GetCurrentAmmo()));
+				Gun->StartFire();
+				Gun->StopFire();
+			}
+		});
+		ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	}
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the server to kill the zombie (client's headshots)"), 5.0, []()
+	{
+		const ATHEnemyCharacter* Enemy = EnemyOn(ServerWorld());
+		return Enemy && Enemy->IsDead();
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client to see the zombie die and drop as a ragdoll"), 5.0, []()
+	{
+		const ATHEnemyCharacter* Enemy = EnemyOn(ClientWorld());
+		return Enemy && Enemy->IsDead() && Enemy->IsRagdoll();
+	}));
+	Step([this]()
+	{
+		const ATHEnemyCharacter* Server = EnemyOn(ServerWorld());
+		const ATHEnemyCharacter* Client = EnemyOn(ClientWorld());
+		AddInfo(FString::Printf(TEXT("Zombie health: server %.0f, client %.0f"), Server ? Server->GetHealthComponent()->GetHealth() : -1.0f,
+			Client ? Client->GetHealthComponent()->GetHealth() : -1.0f));
+		TestTrue(TEXT("The server's body is a ragdoll too"), Server && Server->IsRagdoll());
+		TestEqual(TEXT("The client sees no health left"), Client ? Client->GetHealthComponent()->GetHealth() : -1.0f, 0.0f);
+	});
+
+	EndPlay(this);
+	return true;
+}
+
+// Enemy AI in multiplayer (Milestone 4's exit): in L_EnemyTest (navigation), the server spawns a hunter 4 m in front of
+// the client's player (the host is moved out of sight); the server's AI sees the client's player, runs at them and hits
+// them; the client sees the enemy come at it and its own health drop
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHEnemyAttackTest, "TacticalHorror.Multiplayer.EnemyAttack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHEnemyAttackTest::RunTest(const FString& Parameters)
+{
+	struct FState
+	{
+		TWeakObjectPtr<ATHEnemyCharacter> OnServer;
+		FVector Spawn = FVector::ZeroVector;
+		float ClientHealth = 0.0f;
+	};
+	TSharedRef<FState> State = MakeShared<FState>();
+
+	// The client's copy of the test's enemy (the level's own are destroyed first; behaviours are server-only)
+	auto EnemyOnClient = [State]() -> ATHEnemyCharacter*
+	{
+		for (TActorIterator<ATHEnemyCharacter> It(ClientWorld()); It; ++It)
+		{
+			if (IsValid(*It) && !State->Spawn.IsZero() && FVector::Dist2D(It->GetActorLocation(), State->Spawn) < 1000.0)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	StartListenServer(this, TEXT("/Game/Maps/L_EnemyTest"));
+	Step([]()
+	{
+		for (TActorIterator<ATHEnemyCharacter> It(ServerWorld()); It; ++It)
+		{
+			It->Destroy();
+		}
+		// The host out of the way, in the side room (out of sight of the start room)
+		APawn* Host = FindPlayer(ServerWorld(), true);
+		Host->SetActorLocation(FVector(200.0, 2000.0, Host->GetActorLocation().Z), false, nullptr, ETeleportType::TeleportPhysics);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([this, State]()
+	{
+		UClass* Class = LoadClass<ATHEnemyCharacter>(nullptr, TEXT("/Game/Enemies/BP_Zombie.BP_Zombie_C"));
+		UTHEnemyBehavior* Hunter = LoadObject<UTHEnemyBehavior>(nullptr, TEXT("/Game/Enemies/Behaviors/DA_Hunter.DA_Hunter"));
+		APawn* ClientPlayer = FindPlayer(ServerWorld(), false);
+		TestNotNull(TEXT("The zombie Blueprint loads"), Class);
+		TestNotNull(TEXT("DA_Hunter loads (setup_enemies.py)"), Hunter);
+		TestNotNull(TEXT("The client's player is on the server"), ClientPlayer);
+		if (!Class || !Hunter || !ClientPlayer)
+		{
+			return;
+		}
+		AddInfo(FString::Printf(TEXT("Client's player at %s facing %s"), *ClientPlayer->GetActorLocation().ToString(),
+			*ClientPlayer->GetActorForwardVector().ToString()));
+		const FVector Forward = ClientPlayer->GetActorForwardVector().GetSafeNormal2D();
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		// 2.8 m ahead: inside the 8 m start room from every player start (4 m from the start at x 2.4 m was past its east
+		// wall, and the hunter was pushed out of the room and never saw the player)
+		ATHEnemyCharacter* Enemy = ServerWorld()->SpawnActor<ATHEnemyCharacter>(Class, ClientPlayer->GetActorLocation() + Forward * 280.0f,
+			(-Forward).Rotation(), Params);
+		if (TestNotNull(TEXT("Hunter spawned on the server"), Enemy))
+		{
+			Enemy->SetBehavior(Hunter);
+			State->OnServer = Enemy;
+			State->Spawn = Enemy->GetActorLocation();
+		}
+		const UTHHealthComponent* Health = FindPlayer(ClientWorld(), true)->FindComponentByClass<UTHHealthComponent>();
+		State->ClientHealth = Health ? Health->GetHealth() : 0.0f;
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client to have the hunter"), 10.0, [EnemyOnClient]() { return EnemyOnClient() != nullptr; }));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the server's AI to go after the client's player"), 5.0, [State]()
+	{
+		const ATHEnemyCharacter* Enemy = State->OnServer.Get();
+		const ATHEnemyAIController* Mind = Enemy ? Cast<ATHEnemyAIController>(Enemy->GetController()) : nullptr;
+		return Mind && Mind->GetTarget() == FindPlayer(ServerWorld(), false);
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client to see its own health drop (the hunter's blow)"), 10.0, [State]()
+	{
+		const APawn* Mine = FindPlayer(ClientWorld(), true);
+		const UTHHealthComponent* Health = Mine ? Mine->FindComponentByClass<UTHHealthComponent>() : nullptr;
+		return Health && Health->GetHealth() < State->ClientHealth;
+	}));
+	Step([this, State, EnemyOnClient]()
+	{
+		const ATHEnemyCharacter* Seen = EnemyOnClient();
+		const APawn* Mine = FindPlayer(ClientWorld(), true);
+		const double Moved = Seen ? FVector::Dist2D(Seen->GetActorLocation(), State->Spawn) : 0.0;
+		const double Gap = Seen && Mine ? FVector::Dist2D(Seen->GetActorLocation(), Mine->GetActorLocation()) : 0.0;
+		AddInfo(FString::Printf(TEXT("On the client the hunter moved %.0f cm and stands %.0f cm from the player; health %.0f -> %.0f"), Moved, Gap,
+			State->ClientHealth, Mine ? Mine->FindComponentByClass<UTHHealthComponent>()->GetHealth() : -1.0f));
+		// On the server: anything between the hunter and the client's player (blows need a clear line)
+		if (const ATHEnemyCharacter* Hunter = State->OnServer.Get())
+		{
+			const APawn* Theirs = FindPlayer(ServerWorld(), false);
+			FHitResult Block;
+			FCollisionObjectQueryParams Objects;
+			Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+			Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(THTestReach), false, Hunter);
+			Params.AddIgnoredActor(Theirs);
+			const bool bBlocked = Theirs && ServerWorld()->LineTraceSingleByObjectType(Block, Hunter->GetActorLocation() + FVector(0.0f, 0.0f, 40.0f),
+				Theirs->GetActorLocation() + FVector(0.0f, 0.0f, 40.0f), Objects, Params);
+			AddInfo(FString::Printf(TEXT("Server: hunter clear reach to the client's player %d; chest line blocked by %s (%s, owner %s)"),
+				Theirs && Hunter->HasClearReach(Theirs) ? 1 : 0, bBlocked ? *GetNameSafe(Block.GetActor()) : TEXT("nothing"),
+				bBlocked ? *GetNameSafe(Block.GetComponent()) : TEXT("-"), bBlocked && Block.GetActor() ? *GetNameSafe(Block.GetActor()->GetOwner()) : TEXT("-")));
+		}
+		// In reach: both capsules' radii plus the hunter's 80 cm reach, centre to centre
+		TestTrue(TEXT("The client saw the hunter come at it (within 2.5 m, centre to centre)"), Seen && Moved > 100.0 && Gap < 250.0);
+
+		// Its random look is the same on both machines: body, its materials, and each clothing piece with its materials
+		const ATHEnemyCharacter* Server = State->OnServer.Get();
+		auto Describe = [](const ATHEnemyCharacter* Enemy)
+		{
+			if (!Enemy)
+			{
+				return FString();
+			}
+			auto Mesh = [](const USkeletalMeshComponent* Component)
+			{
+				FString Text = GetNameSafe(Component->GetSkeletalMeshAsset());
+				for (int32 Slot = 0; Slot < Component->GetNumMaterials(); ++Slot)
+				{
+					Text += TEXT(" ") + GetNameSafe(Component->GetMaterial(Slot));
+				}
+				return Text;
+			};
+			FString Text = Mesh(Enemy->GetMesh());
+			for (const USkeletalMeshComponent* Piece : Enemy->GetOutfit())
+			{
+				Text += TEXT(" + ") + Mesh(Piece);
+			}
+			return Text;
+		};
+		AddInfo(FString::Printf(TEXT("Hunter's look: %s"), *Describe(Server)));
+		TestEqual(TEXT("The client sees the same random look as the server"), Describe(Seen), Describe(Server));
+	});
+
+	EndPlay(this);
+	return true;
+}
+
+/**
+ * Downed and death rules (developer, 2026-11-11): a player taken to 0 health is downed only while a teammate is up to
+ * revive them, and a downed player can tell: held crouched (low view), weapons blocked, the downed screen. Revived,
+ * they stand up. The last one standing who goes down just dies.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHDownedTest, "TacticalHorror.Multiplayer.Downed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHDownedTest::RunTest(const FString& Parameters)
+{
+	auto HealthOf = [](APawn* Pawn) -> UTHHealthComponent*
+	{
+		return Pawn ? Pawn->FindComponentByClass<UTHHealthComponent>() : nullptr;
+	};
+	auto ClientStatus = []() -> ETHPlayerStatus
+	{
+		// What the status screen shows (its own tick doesn't run headless, so ask what it would show)
+		return UTHStatusWidget::GetStatusFor(ClientWorld() ? ClientWorld()->GetFirstPlayerController() : nullptr);
+	};
+	// No damage causer or instigator: like a fall, so friendly fire rules don't apply
+	auto Kill = [](APawn* Pawn)
+	{
+		UGameplayStatics::ApplyDamage(Pawn, 1000.0f, nullptr, nullptr, UDamageType::StaticClass());
+	};
+
+	StartListenServer(this, TEXT("/Game/Maps/L_EnemyTest"));
+	Step([]()
+	{
+		// Nothing else to hurt anyone
+		for (TActorIterator<ATHEnemyCharacter> It(ServerWorld()); It; ++It)
+		{
+			It->Destroy();
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([this, HealthOf, Kill]()
+	{
+		APawn* ClientPlayer = FindPlayer(ServerWorld(), false);
+		if (TestNotNull(TEXT("The client's player is on the server"), ClientPlayer))
+		{
+			Kill(ClientPlayer);
+			TestEqual(TEXT("With the host up, the client's player is downed, not dead"), HealthOf(ClientPlayer)->GetHealthState(), ETHHealthState::Downed);
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client to see itself downed, crouched"), 5.0, [HealthOf]()
+	{
+		ACharacter* Mine = Cast<ACharacter>(FindPlayer(ClientWorld(), true));
+		return Mine && HealthOf(Mine)->GetHealthState() == ETHHealthState::Downed && Mine->bIsCrouched;
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
+	Step([this, ClientStatus]()
+	{
+		ACharacter* OnServer = Cast<ACharacter>(FindPlayer(ServerWorld(), false));
+		TestTrue(TEXT("The server holds the downed player crouched too"), OnServer && OnServer->bIsCrouched);
+		const UTHWeaponComponent* Mine = Weapons(FindPlayer(ClientWorld(), true));
+		TestTrue(TEXT("The downed player's weapons are blocked (no firing, aiming or switching)"), Mine && Mine->AreWeaponsBlocked());
+		const ATHPlayerController* PC = Cast<ATHPlayerController>(ClientWorld()->GetFirstPlayerController());
+		TestTrue(TEXT("The client has the status screen"), PC && PC->GetStatusWidget());
+		TestEqual(TEXT("The client's screen says it is down"), ClientStatus(), ETHPlayerStatus::Downed);
+	});
+	// A stalker doesn't take a downed player as its prey: it goes after the one still up (2026-11-14: it hooked the downed
+	// player and let go again every tick, and never stalked their teammate). It only follows here (no strikes)
+	TSharedRef<TWeakObjectPtr<ATHEnemyCharacter>> Stalker = MakeShared<TWeakObjectPtr<ATHEnemyCharacter>>();
+	Step([this, Stalker]()
+	{
+		UClass* Class = LoadClass<ATHEnemyCharacter>(nullptr, TEXT("/Game/Enemies/BP_Zombie.BP_Zombie_C"));
+		UTHEnemyBehavior* Follows = DuplicateObject<UTHEnemyBehavior>(
+			LoadObject<UTHEnemyBehavior>(nullptr, TEXT("/Game/Enemies/Behaviors/DA_Stalker.DA_Stalker")), GetTransientPackage());
+		APawn* Downed = FindPlayer(ServerWorld(), false);
+		if (!TestNotNull(TEXT("The zombie Blueprint loads"), Class) || !TestNotNull(TEXT("DA_Stalker loads"), Follows) || !Downed)
+		{
+			return;
+		}
+		Follows->bStrikes = false;
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		const FVector Forward = Downed->GetActorForwardVector().GetSafeNormal2D();
+		ATHEnemyCharacter* Enemy = ServerWorld()->SpawnActor<ATHEnemyCharacter>(Class, Downed->GetActorLocation() + Forward * 280.0f + FVector(0.0, 0.0, 40.0),
+			(-Forward).Rotation(), Params);
+		if (!TestNotNull(TEXT("Stalker spawned on the server"), Enemy))
+		{
+			return;
+		}
+		Enemy->SetBehavior(Follows);
+		*Stalker = Enemy;
+		// The downed player gives themselves away to it: still not its prey
+		ATHEnemyAIController* Mind = Cast<ATHEnemyAIController>(Enemy->GetController());
+		if (TestNotNull(TEXT("The stalker has its mind"), Mind))
+		{
+			Mind->NotifyDamaged(Downed);
+			TestTrue(TEXT("A stalker doesn't take a downed player as its prey"), Mind->GetTarget() != Downed);
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the stalker to go after the host, who is still up"), 3.0, [Stalker]()
+	{
+		const ATHEnemyAIController* Mind = Stalker->IsValid() ? Cast<ATHEnemyAIController>((*Stalker)->GetController()) : nullptr;
+		return Mind && Mind->IsStalking() && Mind->GetTarget() == FindPlayer(ServerWorld(), true);
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
+	Step([this, Stalker]()
+	{
+		const ATHEnemyAIController* Mind = Stalker->IsValid() ? Cast<ATHEnemyAIController>((*Stalker)->GetController()) : nullptr;
+		TestTrue(TEXT("It keeps to the host (no letting go and hooking again)"), Mind && Mind->IsStalking() && Mind->GetTarget() == FindPlayer(ServerWorld(), true));
+		if (ATHEnemyCharacter* Enemy = Stalker->Get())
+		{
+			Enemy->Destroy();
+		}
+	});
+	Step([HealthOf]()
+	{
+		HealthOf(FindPlayer(ServerWorld(), false))->Revive(nullptr);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the revived client to stand up"), 5.0, [HealthOf]()
+	{
+		ACharacter* Mine = Cast<ACharacter>(FindPlayer(ClientWorld(), true));
+		return Mine && HealthOf(Mine)->IsAlive() && !Mine->bIsCrouched;
+	}));
+	Step([this, HealthOf, Kill]()
+	{
+		const UTHWeaponComponent* Mine = Weapons(FindPlayer(ClientWorld(), true));
+		TestTrue(TEXT("Revived, the client's weapons work again"), Mine && !Mine->AreWeaponsBlocked());
+
+		// Client down again, then the host: nobody is left to revive the host, so the host dies
+		Kill(FindPlayer(ServerWorld(), false));
+		APawn* Host = FindPlayer(ServerWorld(), true);
+		Kill(Host);
+		TestEqual(TEXT("The last one standing dies rather than being downed"), HealthOf(Host)->GetHealthState(), ETHHealthState::Dead);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the client's screen to show the mission failed"), 5.0, [ClientStatus]()
+	{
+		return ClientStatus() == ETHPlayerStatus::MissionFailed;
+	}));
+	// The dead host goes down in a dramatic death performance: the same one on the server and as the client sees it
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the dead host's body to play a death performance on both machines"), 3.0, []()
+	{
+		const ATHCharacter* OnServer = Cast<ATHCharacter>(FindPlayer(ServerWorld(), true));
+		const ATHCharacter* OnClient = Cast<ATHCharacter>(FindPlayer(ClientWorld(), false));
+		return OnServer && OnClient && OnServer->GetDeathPerformance() && OnServer->GetDeathPerformance() == OnClient->GetDeathPerformance();
+	}));
+	Step([this]()
+	{
+		const ATHCharacter* OnServer = Cast<ATHCharacter>(FindPlayer(ServerWorld(), true));
+		const UAnimSequence* Performance = OnServer ? OnServer->GetDeathPerformance() : nullptr;
+		AddInfo(FString::Printf(TEXT("Dead host's performance: %s"), *GetNameSafe(Performance)));
+		TestTrue(TEXT("It is one of the character's death performances"), OnServer && Performance
+			&& OnServer->DeathPerformances.ContainsByPredicate([Performance](const TSoftObjectPtr<UAnimSequence>& Each) { return Each.Get() == Performance; }));
+	});
 
 	EndPlay(this);
 	return true;

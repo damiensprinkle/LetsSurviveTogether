@@ -1,7 +1,7 @@
 # Roadmap
 
 Milestones 1–6 and 9 come from GDD.md section 15 (goals and exit criteria); 7 (loadout zone) and 8 (story) were added by the developer. This file tracks status and the concrete work under each.
-Day-to-day details and "what was just done" live in TASKS.md. Status as of **2026-11-09**.
+Day-to-day details and "what was just done" live in TASKS.md. Status as of **2026-11-10**; story and milestones 7-9 updated **2026-11-13**; Milestone 4 updated **2026-11-14**.
 
 Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly done · ⬜ not started · ❓ needs a design decision first
 
@@ -10,11 +10,11 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 ## Now: the next few sessions, in order
 
 1. ✅ **Content cleanup** (2026-11-04/05, see *Content pipeline*): deleting, archiving, the folder moves and the animation renaming are done. Left from it: a new-gun checklist.
-2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 20 tests, about 200 s (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
+2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 20 tests, about 200 s at the time; more since, the current list is in TESTING.md (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
 3. ✅ **Two-player play test** (Milestone 1 exit; two PCs, 2026-11-09): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
-4. 🔧 **Test range** (2026-11-05: the Fab firing range imported as `Maps/L_FiringRange`, walkable, lit with `BP_OverheadLight`, with a ceiling, the template door and an empty room behind it; next spray targets; see TASKS.md *Where we left off*) (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil. Separate from the tests' own map (`/Game/Tests/Maps/L_FunctionalTests`).
-5. 🔧 **Hit feedback**: ✅ bullet holes by surface; ⬜ hit-confirm audio cue, blood.
-6. 🔧 **Doors and downed / revive** (Milestone 3), then enemies: ✅ the template's doors, key locks, keypad and valve door work in co-op (2026-11-07); ✅ downed rules decided (2026-11-09, Milestone 3); ⬜ block shooting while downed, play-test downed / revive.
+4. 🔧 **Test range** (2026-11-13: an internal testing tool only, not part of the game) (2026-11-05: the Fab firing range imported as `Maps/L_FiringRange`, walkable, lit with `BP_OverheadLight`, with a ceiling, the template door and an empty room behind it; next spray targets; see TASKS.md *Where we left off*) (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil. Separate from the tests' own map (`/Game/Tests/Maps/L_FunctionalTests`).
+5. 🔧 **Hit feedback**: ✅ bullet holes by surface; ✅ blood on enemies; ✅ being hit: view jolt and blood on the screen (2026-11-11); ⬜ hit-confirm audio cue, a hurt sound.
+6. 🔧 **Doors and downed / revive** (Milestone 3), then enemies: ✅ the template's doors, key locks, keypad and valve door work in co-op (2026-11-07); ✅ downed rules decided (2026-11-09, Milestone 3); ✅ downed made visible and shooting blocked, solo players die instead (2026-11-11); ⬜ play-test downed / revive in co-op.
 7. ✅ **Enemy test map** (2026-11-09): `/Game/Maps/L_EnemyTest`, a small dark level with a navigation mesh for the first enemies (Milestone 4), also Milestone 3's dark test map.
 8. **Settings menu, much better** (developer, 2026-11-09): rebindable keys first (real input assets), then graphics; see Milestone 6.
 
@@ -51,7 +51,8 @@ Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting p
 - ✅ **Third-person reload magazine** (2026-11-04): the old magazine drops out of the gun and falls to the floor (physics, removed after 30 s), a fresh one appears in the left hand at the waist and is seated. Magazine meshes cut from each gun's rig (`setup_magazines.py`); timing per gun on the weapon data (M4 tuned in play). ⬜ A magazine-drop sound (`MagazineDropSound`), ⬜ maybe the first-person view drops one too.
 - ⬜ Turn-in-place (feet slide when turning on the spot)
 - ⬜ Male rifle walk set (current rifle walks are female `AS_F_*`); pistol crouch; slower crouch walks
-- ⬜ Downed / dead body animation (see Milestone 3, Downed)
+- ⬜ Downed / dead body animation (see Milestone 3, Downed) (dead: ✅ death performances, 2026-11-11)
+- ⬜ **Credits screen** (main menu): **required** by Dramatic Death's CC BY 4.0 license ("Dramatic Death Animation Performances by Darkania Works", with the license link); list the other packs too (THIRD_PARTY_ASSETS.csv)
 - ⬜ Small aim correction for the raised pistol (it points where the animation's hand points)
 
 **HUD and feedback**
@@ -85,27 +86,30 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - ⬜ **Doors:** the template already has keyed locks, keypads and a valve wheel (developer, 2026-11-05): use those, made server-authoritative (open / close, replicated state, sound), can't close on a player; open speed / push direction; locked variants for missions, opened by **keys found in the mission or keypads** (codes found as clues) for now (decided 2026-11-04). Optional third-person hand reach when opening (an additive arm animation).
 - 🔧 **Downed and revive.** Built in code, not yet play-tested: at 0 health a player goes down and bleeds out after 30 s; holding **E** for 3 s on them revives at 30% health; when everyone is down the mission restarts. Still to do:
   - ✅ Rules (developer, 2026-11-09): bleed out after **30 s**; **enemies can finish off** downed players; a downed player **cannot shoot** but **can move slowly** (crawl, `DownedSpeedMultiplier` 0.2, already in code); **no limit** on how many times a player can go down.
-  - ⬜ Block firing, reloading, aiming and switching weapons while downed (not done in code yet)
-  - ⬜ Downed body pose and crawl for others to see; the downed first-person view (camera low, desaturated, heartbeat)
-  - ⬜ UI: bleed-out timer for the downed player, a revive prompt and progress bar for the reviver, a teammate-down marker
+  - ✅ Downed only when someone can revive you (developer, 2026-11-11): solo, or the last one standing, a player at 0 health dies
+  - ✅ Block firing, reloading, aiming and switching weapons while downed (weapons blocked; crosshair and ammo hidden; tested by `Multiplayer.Downed`)
+  - 🔧 Downed view (2026-11-11): held crouched, so the camera is low and others see the player crouched; a red, breathing screen tint (`UTHStatusWidget`). ⬜ A real downed body pose and crawl, desaturation, heartbeat
+  - 🔧 UI: ✅ "You're down" with the bleed-out timer, "You died", "Everyone is down / Restarting" (2026-11-11); ⬜ a revive prompt and progress bar for the reviver, a teammate-down marker
   - ⬜ Revive animation for both players (kneel / help up); cancel on damage or moving away
+  - ✅ Death (2026-11-11): the view falls to the floor and rolls onto its side; others see a dramatic death performance (Darkania Works, CC BY 4.0); the first-person gun goes
   - ⬜ Death: spectate a teammate until the mission ends or a respawn point
 - 🟡 Health and damage (`UTHHealthComponent`), friendly fire switch on the GameMode
-- 🔧 Audio: footsteps by movement mode, gun foley, settings menu volume sliders. ⬜ Footsteps by surface (Physical Materials, shared with bullet impacts), reverb zones, an ambience bed
-- ⬜ **Sanity** (GDD 7.2): a per-player sanity value (replicated to its owner); low sanity adds weapon sway and local-only hallucinations (sounds, shapes); restored by lit areas and nearby teammates (❓ drains and restores to decide). **No HUD bar:** shown on an in-world item, e.g. a smartwatch on the wrist with heart rate (raise the arm to look at it, first person and third person), or a journal (❓ which item). Tuning in a data asset.
+- 🔧 Audio: footsteps by movement mode, gun foley, settings menu volume sliders. ✅ Music and ambience (2026-11-11: two layers, a Music & ambience slider, menu theme); ✅ voices: enemies (hunter angry, ambusher scared, stalker gasping and moaning) and players (hurt, jump, death stinger). ⬜ Footsteps by surface (Physical Materials, shared with bullet impacts), reverb zones, an ambience bed (done: music and drones), music that reacts to danger
+- ⬜ **Sanity** (GDD 7.2): a per-player sanity value (replicated to its owner); low sanity adds weapon sway and local-only hallucinations (sounds, shapes); restored by lit areas and nearby teammates (❓ drains and restores to decide). **No HUD bar:** shown on an in-world item, e.g. a smartwatch on the wrist with heart rate (developer, 2026-11-11: an audible heartbeat getting faster as sanity drops, from HealthDamageSFX's heartbeats) (raise the arm to look at it, first person and third person), or a journal (❓ which item). Tuning in a data asset.
 - ⬜ Environmental lighting pass for a dark test map (a first dark test map exists: `L_EnemyTest`)
 - ⬜ **Exit:** players navigate a dark test map with their equipment and interact with objects
 
 ## Milestone 4: Enemies and AI
-- ⬜ `ATHEnemyBase`: the capsule ignores the Weapon channel and the mesh takes hits; `UTHHealthComponent` with `bCanBeDowned = false`
+- ✅ `ATHEnemyCharacter` (2026-11-09): the capsule ignores the Weapon channel and the body's bones take hits (headshots); `UTHHealthComponent` with no downed state, 200 health (2026-11-10); blood (wound effects, splatter behind, no bullet hole on flesh); ragdoll on death, replicated. Yarrawah Interactive's zombie M04; every zombie and creature body checked in a line-up (2026-11-10)
 - Direction (GDD 7.1): few enemies, fast and hard-hitting; tension from stalking and subtle audio rather than numbers.
-- ⬜ AI perception (sight, hearing from gunshots / footsteps / doors **and voice**), patrol, investigate, chase, attack. Voice (developer, 2026-11-09): talking in proximity voice is heard by enemies near the speaker with the same weight as footsteps; talking over the **walkie-talkie** carries more weight (it is louder and travels further), so long-range radio calls are a risk.
-- ⬜ Enemies can finish off downed players (developer, 2026-11-09)
-- ⬜ Stalking: approach from behind / out of view, with quiet, positional audio tells (breathing, a scrape, a footstep) that an attentive player can catch; a short, readable warning before an attack so deaths feel fair
+- 🟡 **Behaviours** (2026-11-10): Hunter, Stalker, Ambusher (GDD 7's archetypes), Charger and Siren (2026-11-12/13; ENEMIES.md), a dropdown per placed enemy (`UTHEnemyBehavior` data assets with their tuning). ⬜ Mimic; ⬜ the story's variants (sleepers that act normal, newly infected who speak)
+- 🟡 AI perception (2026-11-10): ✅ sight, ✅ hearing of gunshots and footsteps, ✅ wander, investigate, chase, attack (C++ state machine, `ATHEnemyAIController`). 🟡 doors as noises (2026-11-13); ⬜ **voice** as a noise. Voice (developer, 2026-11-09): talking in proximity voice is heard by enemies near the speaker with the same weight as footsteps; talking over the **walkie-talkie** carries more weight (it is louder and travels further), so long-range radio calls are a risk. 🟡 Walls muffling sounds (2026-11-13); 🟡 darkness and flashlights in what enemies see (2026-11-13)
+- ✅ Enemies can finish off downed players (developer, 2026-11-09; built 2026-11-10: an enemy's blow kills a downed player)
+- 🟡 Stalking (2026-11-10): the stalker keeps behind a player out of view, slips away when looked at or approached, and now and then strikes from behind. 🟡 Quiet, positional audio tells (gasping as it follows, lure footsteps, lights flickering near it) and the moan before a strike (2026-11-11/13; it doesn't speak or whisper, developer 2026-11-14)
 - ⬜ **Difficulty settings** (host's choice, applied by the server): enemy damage first, then possibly enemy speed / health, and helpers for horror players new to tactical shooting that don't remove the skill (e.g. gentler recoil, more reserve ammo). Chosen per mission, shown in the lobby
-- ⬜ Hit reactions by bone, death, ragdoll; blood (shared with Milestone 2)
-- ⬜ Replication and server authority; spawn / director rules
-- ⬜ **Exit:** a server-controlled enemy detects and engages players in a multiplayer test
+- 🟡 Hit reactions (2026-11-13/14: staggers by side and weight, limbs off, limping, crawling; Mixamo zombie flinches), death and ragdoll (done), blood (done, shared with Milestone 2)
+- 🟡 Replication and server authority (✅ AI on the server, movement and attacks replicated); 🟡 the director (2026-11-13: `ATHDirector`, waves from spawn points out of sight; problems to try in ENEMY_PLAYTESTS.md)
+- 🟡 **Exit:** a server-controlled enemy detects and engages players in a multiplayer test: ✅ `Multiplayer.EnemyAttack` (2026-11-10); ⬜ play-tested with two players
 
 ## Milestone 5: Mission Framework
 - ⬜ Mission data assets, objectives, dependencies, extraction
@@ -123,8 +127,8 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - ⬜ The developer's Widget Blueprints for the menus (main menu, settings, lobby, HUD), replacing the placeholder C++ layouts (see AI_CONTENT.md)
 - ⬜ **Exit:** host or join over Steam, ready up, start a mission together
 
-## Milestone 7: Loadout Zone (preparation area)
-The developer's direction: a physical place you walk around between missions, not just a menu (GDD section 5).
+## Milestone 7: Loadout Zone (preparation area) — on hold
+On hold (developer, 2026-11-13): the new story (Milestone 8) starts the players in their offices at Aegis, with no staging area. The firing range (`L_FiringRange`) stays only as an internal testing tool. Earlier direction: a physical place you walk around between missions, not just a menu (GDD section 5).
 - ⬜ The prep area level: walk-around space shared by the team
 - ⬜ Loadout selection: weapons on the walls to pick up (or a menu), primary / secondary from the weapon data assets; equipment (flashlight, night vision, medical, **suppressor**: quieter shots that enemies hear from less far, a smaller muzzle flash, a model on the barrel in first and third person)
 - ⬜ Firing range: targets, a grid wall for recoil patterns (an early version comes first, see *Now*). Target carriers with booth buttons exist (2026-11-09); when the range is decorated: a proper button panel instead of the light-switch placeholder, and a sound while a carrier moves.
@@ -133,16 +137,25 @@ The developer's direction: a physical place you walk around between missions, no
 - ⬜ **Exit:** host or join, prepare, deploy, return
 
 ## Milestone 8: Story Layout
-The developer's story direction is in GDD.md section 9.1 (specialist incident-response team; isolated incidents that turn out to be connected; an infection controlled by a greater host).
-- ⬜ Write the story outline in the GDD: the team / organisation, the incident list for the first missions, how the connection is revealed
-- ❓ A unique name for the infection / organism and its infected (not "zombie")
-- ⬜ Enemy variants from the story: newly infected who still act normal or speak, triggered sleepers, coordinated attacks (feeds Milestone 4's enemy archetypes and the GDD's section 7)
-- ⬜ Which mission comes first (the research facility in Milestone 9, or another incident)
+Decided (developer, 2026-11-13): GDD.md section 9. Four researchers (Dr Fields, Dr Hayes, Dr Cross, Dr Shaw) wake up inside **Aegis**, the research facility where human trials of a Devil's Tooth (Hydnellum peckii) organism, **the Quorum**, turned the patients and staff into the infected. One continuous story through the facility, replacing the incident-response team and independent missions (kept in GDD 9.6).
+- ✅ Story outline in the GDD: the organism, the outbreak, the infected types, the players, the opening sequence (GDD 9.1-9.5)
+- ✅ Name of the organism: the Quorum
+- ✅ Enemy types from the story: Sirens, Ambushers, Hunters, Stalkers, Chargers (all built, Milestone 4; ENEMIES.md *In the story*)
+- ⬜ TODO (developer): how the lab looks; the Siren guard's conversation and attack (a cutscene, button mashing); the keypad puzzle for the red door's 4-digit code
+- ⬜ Design the research wing off the main research corridor: Administration, Utilities, Containment, Research, Classified Area
+- ⬜ Find and play: the name plates, the elevator audio log (the Devil's Tooth breakthrough), other documents and recordings; idea: security footage of the first mutation (Charger)
+- ⬜ The ending: how the researchers get out (not written yet)
 
 ## Milestone 9: First Complete Mission
-- ⬜ Research facility map, objectives, two enemy types, scripted and dynamic scares, extraction
+Now the opening of the story (GDD 9.5), developer 2026-11-13:
+- ⬜ Offices: one per player (locked; only its own player has the key), the flickering light, the flipped chair and papers, an inspectable name plate, a flashlight and a key on the desk
+- ⬜ The long dim hallway with posters; the pitch-black waiting room (8-12 chairs, a reception desk, the blood pool and drag marks to the elevator)
+- ⬜ The elevator: calling it plays a distant roar; one button, "Lab"; the audio tape on its floor plays for the ride while the lights flicker and the car shakes
+- ⬜ The lab: footsteps scurrying away, a distant cry for help; the Siren guard in the utility closet (cutscene; it drops a handgun the player picks up); the red keypad door
+- ⬜ The security checkpoint: Hunters charge as the players walk in (1 for 1-2 players, 2 for 3, 3 for 4)
+- ⬜ The main research corridor as the hub (the wings come later)
 - ⬜ Four-player test from start to finish
-- ⬜ **Exit:** a team completes or fails the mission with everything synchronised
+- ⬜ **Exit:** a team plays from waking up to the research corridor with everything synchronised
 
 ## Later / unscheduled
 - ⬜ **Night vision** (developer, 2026-11-09: not sure it stays in the game). The template's goggles and `WB_NightVision` are there but were never tested; its battery texture was renamed `T_NV_Battery`.
@@ -151,11 +164,11 @@ The developer's story direction is in GDD.md section 9.1 (specialist incident-re
 - ⬜ Packaged builds: a Shipping config, a cooked build test, crash reporting; a Steam depot upload when the store page exists
 - ⬜ Performance pass: profiling, LODs, decal and casing caps, scalability settings
 - ⬜ Accessibility: subtitles for important audio, colour-blind-safe crosshair and markers, flash / gore toggles
-- ⬜ Onboarding for horror players new to tactical shooting: the prep-area firing range doubles as a short tutorial (recoil control, reloading, flashlight use)
+- ⬜ Onboarding for horror players new to tactical shooting: a short tutorial (was: the prep-area firing range; with the new story, more likely the opening: the flashlight in the office, the handgun in the lab) (recoil control, reloading, flashlight use)
 
 ## Decisions needed (GDD open questions)
 - ❓ Friendly fire default (on / off / reduced)
 - ❓ Ammo economy: reserve sizes, pickups, resupply between missions
 - ❓ How much gore: blood only, or also dismemberment / gibs
 - ❓ Crosshair while hip-firing: always, optional, or none (immersion vs readability)
-- ❓ Name of the infection / organism (Milestone 8)
+- ✅ Name of the organism: the Quorum (2026-11-13, Milestone 8)

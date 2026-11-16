@@ -1,12 +1,15 @@
 #include "UI/THAudioSettingsWidget.h"
 #include "Settings/THAudioSettingsSubsystem.h"
 #include "Settings/THCrosshairSettingsSubsystem.h"
+#include "Settings/THControlsSettingsSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/Slider.h"
 #include "Components/TextBlock.h"
@@ -66,11 +69,26 @@ void UTHAudioSettingsWidget::BuildLayout()
 	Size->SetWidthOverride(520.0f);
 	Panel->SetContent(Size);
 
+	// Scrolls if the screen is too short for every section
+	Size->SetMaxDesiredHeight(820.0f);
+	UScrollBox* Scroll = WidgetTree->ConstructWidget<UScrollBox>();
+	Size->SetContent(Scroll);
+
 	UVerticalBox* Box = WidgetTree->ConstructWidget<UVerticalBox>();
-	Size->SetContent(Box);
+	Scroll->AddChild(Box);
 
 	UVerticalBoxSlot* TitleSlot = Box->AddChildToVerticalBox(MakeText(WidgetTree, LOCTEXT("Title", "Settings"), 24));
 	TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 12.0f));
+
+	// Controls
+	AddSectionTitle(Box, LOCTEXT("ControlsSection", "Controls"));
+	LookSensitivitySlider = AddSliderRow(Box, LOCTEXT("LookSensitivity", "Look Sensitivity"),
+		UTHControlsSettingsSubsystem::MinSensitivity, UTHControlsSettingsSubsystem::MaxSensitivity, 0.005f, LookSensitivityValueText);
+	LookSensitivitySlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleLookSensitivityChanged);
+	AimSensitivitySlider = AddSliderRow(Box, LOCTEXT("AimSensitivity", "Aim Sensitivity"),
+		UTHControlsSettingsSubsystem::MinSensitivity, UTHControlsSettingsSubsystem::MaxSensitivity, 0.005f, AimSensitivityValueText);
+	AimSensitivitySlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleAimSensitivityChanged);
+	AddSensitivityConverterRows(Box);
 
 	// Audio
 	AddSectionTitle(Box, LOCTEXT("AudioSection", "Audio"));
@@ -78,6 +96,8 @@ void UTHAudioSettingsWidget::BuildLayout()
 	MasterSlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleMasterChanged);
 	GunplaySlider = AddVolumeRow(Box, LOCTEXT("Gunplay", "Gunplay"), GunplayValueText);
 	GunplaySlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleGunplayChanged);
+	MusicSlider = AddVolumeRow(Box, LOCTEXT("Music", "Music & ambience"), MusicValueText);
+	MusicSlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleMusicChanged);
 
 	// Crosshair
 	AddSectionTitle(Box, LOCTEXT("CrosshairSection", "Crosshair"));
@@ -195,6 +215,141 @@ void UTHAudioSettingsWidget::AddCrosshairStyleRow(UVerticalBox* Box)
 	Row->AddChildToHorizontalBox(CountBox)->SetVerticalAlignment(VAlign_Center);
 }
 
+void UTHAudioSettingsWidget::AddSensitivityConverterRows(UVerticalBox* Box)
+{
+	// Convert from · < · game · >
+	UHorizontalBox* GameRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Box->AddChildToVerticalBox(GameRow)->SetPadding(FMargin(0.0f, 6.0f));
+	UHorizontalBoxSlot* GameLabelSlot = GameRow->AddChildToHorizontalBox(MakeText(WidgetTree, LOCTEXT("ConvertFrom", "Convert From"), 16));
+	GameLabelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	GameLabelSlot->SetVerticalAlignment(VAlign_Center);
+
+	UButton* Previous = MakeButton(WidgetTree, LOCTEXT("PreviousGame", "<"));
+	Previous->OnClicked.AddDynamic(this, &UTHAudioSettingsWidget::HandlePreviousConverterGame);
+	GameRow->AddChildToHorizontalBox(Previous)->SetVerticalAlignment(VAlign_Center);
+
+	USizeBox* GameBox = WidgetTree->ConstructWidget<USizeBox>();
+	GameBox->SetWidthOverride(250.0f);
+	ConverterGameText = MakeText(WidgetTree, FText::GetEmpty(), 14);
+	ConverterGameText->SetJustification(ETextJustify::Center);
+	GameBox->SetContent(ConverterGameText);
+	UHorizontalBoxSlot* GameNameSlot = GameRow->AddChildToHorizontalBox(GameBox);
+	GameNameSlot->SetPadding(FMargin(6.0f, 0.0f));
+	GameNameSlot->SetVerticalAlignment(VAlign_Center);
+
+	UButton* Next = MakeButton(WidgetTree, LOCTEXT("NextGame", ">"));
+	Next->OnClicked.AddDynamic(this, &UTHAudioSettingsWidget::HandleNextConverterGame);
+	GameRow->AddChildToHorizontalBox(Next)->SetVerticalAlignment(VAlign_Center);
+
+	// Their sensitivity · [value] · Convert
+	UHorizontalBox* ValueRow = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Box->AddChildToVerticalBox(ValueRow)->SetPadding(FMargin(0.0f, 6.0f));
+	UHorizontalBoxSlot* ValueLabelSlot = ValueRow->AddChildToHorizontalBox(MakeText(WidgetTree, LOCTEXT("TheirSensitivity", "Their Sensitivity"), 16));
+	ValueLabelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	ValueLabelSlot->SetVerticalAlignment(VAlign_Center);
+
+	USizeBox* InputBox = WidgetTree->ConstructWidget<USizeBox>();
+	InputBox->SetWidthOverride(110.0f);
+	TheirSensitivityBox = WidgetTree->ConstructWidget<UEditableTextBox>();
+	TheirSensitivityBox->SetHintText(LOCTEXT("TheirSensitivityHint", "e.g. 1.25"));
+	TheirSensitivityBox->OnTextCommitted.AddDynamic(this, &UTHAudioSettingsWidget::HandleTheirSensitivityCommitted);
+	InputBox->SetContent(TheirSensitivityBox);
+	UHorizontalBoxSlot* InputSlot = ValueRow->AddChildToHorizontalBox(InputBox);
+	InputSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+	InputSlot->SetVerticalAlignment(VAlign_Center);
+
+	UButton* Convert = MakeButton(WidgetTree, LOCTEXT("Convert", "Convert"));
+	Convert->OnClicked.AddDynamic(this, &UTHAudioSettingsWidget::HandleConvertClicked);
+	ValueRow->AddChildToHorizontalBox(Convert)->SetVerticalAlignment(VAlign_Center);
+
+	// What happened, under the rows
+	ConverterResultText = MakeText(WidgetTree, FText::GetEmpty(), 13);
+	ConverterResultText->SetColorAndOpacity(FSlateColor(FLinearColor(0.65f, 0.65f, 0.65f)));
+	ConverterResultText->SetAutoWrapText(true);
+	Box->AddChildToVerticalBox(ConverterResultText)->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
+}
+
+void UTHAudioSettingsWidget::RefreshConverterGame()
+{
+	const TArray<FTHOtherGameSensitivity>& Games = UTHControlsSettingsSubsystem::GetOtherGames();
+	if (ConverterGameText && Games.IsValidIndex(ConverterGame))
+	{
+		ConverterGameText->SetText(Games[ConverterGame].Name);
+	}
+}
+
+void UTHAudioSettingsWidget::RefreshSensitivityControls()
+{
+	const UTHControlsSettingsSubsystem* Controls = GetControlsSettings();
+	if (!Controls)
+	{
+		return;
+	}
+	if (LookSensitivitySlider)
+	{
+		LookSensitivitySlider->SetValue(Controls->GetLookSensitivity());
+		LookSensitivityValueText->SetText(FormatSensitivity(Controls->GetLookSensitivity()));
+	}
+	if (AimSensitivitySlider)
+	{
+		AimSensitivitySlider->SetValue(Controls->GetAimSensitivity());
+		AimSensitivityValueText->SetText(FormatSensitivity(Controls->GetAimSensitivity()));
+	}
+}
+
+void UTHAudioSettingsWidget::HandlePreviousConverterGame()
+{
+	const int32 Count = UTHControlsSettingsSubsystem::GetOtherGames().Num();
+	ConverterGame = Count > 0 ? (ConverterGame + Count - 1) % Count : 0;
+	RefreshConverterGame();
+}
+
+void UTHAudioSettingsWidget::HandleNextConverterGame()
+{
+	const int32 Count = UTHControlsSettingsSubsystem::GetOtherGames().Num();
+	ConverterGame = Count > 0 ? (ConverterGame + 1) % Count : 0;
+	RefreshConverterGame();
+}
+
+void UTHAudioSettingsWidget::HandleTheirSensitivityCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+	if (CommitMethod == ETextCommit::OnEnter)
+	{
+		HandleConvertClicked();
+	}
+}
+
+void UTHAudioSettingsWidget::HandleConvertClicked()
+{
+	UTHControlsSettingsSubsystem* Controls = GetControlsSettings();
+	if (!Controls || !TheirSensitivityBox || !ConverterResultText)
+	{
+		return;
+	}
+	// Accept a comma as the decimal point too
+	const FString Entered = TheirSensitivityBox->GetText().ToString().TrimStartAndEnd().Replace(TEXT(","), TEXT("."));
+	const float Theirs = Entered.IsNumeric() ? FCString::Atof(*Entered) : 0.0f;
+	if (Theirs <= 0.0f)
+	{
+		ConverterResultText->SetText(LOCTEXT("ConvertBadNumber", "Enter your sensitivity from that game, e.g. 1.25."));
+		return;
+	}
+	const float Ours = UTHControlsSettingsSubsystem::ConvertFrom(ConverterGame, Theirs);
+	Controls->SetLookSensitivity(Ours);
+	RefreshSensitivityControls();
+	const FText GameName = UTHControlsSettingsSubsystem::GetOtherGames()[ConverterGame].Name;
+	if (Ours < UTHControlsSettingsSubsystem::MinSensitivity || Ours > UTHControlsSettingsSubsystem::MaxSensitivity)
+	{
+		ConverterResultText->SetText(FText::Format(LOCTEXT("ConvertOutOfRange", "{0} in {1} is {2} here, outside the range, so Look Sensitivity is set to {3}."),
+			FText::AsNumber(Theirs), GameName, FormatSensitivity(Ours), FormatSensitivity(Controls->GetLookSensitivity())));
+	}
+	else
+	{
+		ConverterResultText->SetText(FText::Format(LOCTEXT("ConvertDone", "{0} in {1}: Look Sensitivity set to {2}. Uses the same mouse DPI; aim sensitivity is not converted."),
+			FText::AsNumber(Theirs), GameName, FormatSensitivity(Ours)));
+	}
+}
+
 void UTHAudioSettingsWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -217,12 +372,23 @@ void UTHAudioSettingsWidget::NativeConstruct()
 			GunplaySlider->SetValue(Settings->GetGunplayVolume());
 			GunplayValueText->SetText(FormatPercent(Settings->GetGunplayVolume()));
 		}
+		if (MusicSlider)
+		{
+			MusicSlider->SetValue(Settings->GetMusicVolume());
+			MusicValueText->SetText(FormatPercent(Settings->GetMusicVolume()));
+		}
 	}
+	RefreshSensitivityControls();
+	RefreshConverterGame();
 	RefreshCrosshairControls();
 }
 
 void UTHAudioSettingsWidget::NativeDestruct()
 {
+	if (UTHControlsSettingsSubsystem* Controls = GetControlsSettings())
+	{
+		Controls->SaveSettings();
+	}
 	if (UTHCrosshairSettingsSubsystem* Crosshair = GetCrosshairSettings())
 	{
 		Crosshair->SaveSettings();
@@ -288,9 +454,41 @@ UTHCrosshairSettingsSubsystem* UTHAudioSettingsWidget::GetCrosshairSettings() co
 	return GameInstance ? GameInstance->GetSubsystem<UTHCrosshairSettingsSubsystem>() : nullptr;
 }
 
+UTHControlsSettingsSubsystem* UTHAudioSettingsWidget::GetControlsSettings() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UTHControlsSettingsSubsystem>() : nullptr;
+}
+
+FText UTHAudioSettingsWidget::FormatSensitivity(float Value)
+{
+	FNumberFormattingOptions Options;
+	Options.MinimumFractionalDigits = 3;
+	Options.MaximumFractionalDigits = 3;
+	return FText::AsNumber(Value, &Options);
+}
+
 FText UTHAudioSettingsWidget::FormatPercent(float Value)
 {
 	return FText::AsPercent(Value);
+}
+
+void UTHAudioSettingsWidget::HandleLookSensitivityChanged(float Value)
+{
+	if (UTHControlsSettingsSubsystem* Controls = GetControlsSettings())
+	{
+		Controls->SetLookSensitivity(Value);
+	}
+	LookSensitivityValueText->SetText(FormatSensitivity(Value));
+}
+
+void UTHAudioSettingsWidget::HandleAimSensitivityChanged(float Value)
+{
+	if (UTHControlsSettingsSubsystem* Controls = GetControlsSettings())
+	{
+		Controls->SetAimSensitivity(Value);
+	}
+	AimSensitivityValueText->SetText(FormatSensitivity(Value));
 }
 
 void UTHAudioSettingsWidget::HandleMasterChanged(float Value)
@@ -309,6 +507,15 @@ void UTHAudioSettingsWidget::HandleGunplayChanged(float Value)
 		Settings->SetGunplayVolume(Value);
 	}
 	GunplayValueText->SetText(FormatPercent(Value));
+}
+
+void UTHAudioSettingsWidget::HandleMusicChanged(float Value)
+{
+	if (UTHAudioSettingsSubsystem* Settings = GetSettings())
+	{
+		Settings->SetMusicVolume(Value);
+	}
+	MusicValueText->SetText(FormatPercent(Value));
 }
 
 void UTHAudioSettingsWidget::HandlePreviousStyle()

@@ -62,6 +62,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	bool IsReloading() const { return bIsReloading; }
 
+	/** Server: when it last fired (world seconds); enemies read it (a player busy shooting is an opening). */
+	float GetLastServerShotTime() const { return LastServerShotTime; }
+
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	ETHFireMode GetFireMode() const;
 
@@ -209,8 +212,10 @@ private:
 	void PlayFireEffects();
 	void ShowMuzzleFlash(const FTransform& Muzzle);
 	void EjectShellCasing(const FTransform& Muzzle);
-	/** Surface is an EPhysicalSurface: what the shot hit, which picks the bullet hole. */
+	/** Surface is an EPhysicalSurface: what the shot hit, which picks the bullet hole or blood (UTHImpactSurfaces). */
 	void PlayImpactEffects(const FVector& Location, const FVector& Normal, uint8 Surface);
+	/** A decal of Size cm facing out of Normal, attached to Surface (found by a short trace if null) when that moves. */
+	void SpawnImpactDecal(class UMaterialInterface* Material, const FVector& Location, const FVector& Normal, float Size, class UPrimitiveComponent* Surface);
 
 	void ProcessServerShot(const FVector& ViewLocation, const FRotator& ViewRotation, int32 ClientSprayIndex, int32 ShotNumber);
 	void FinishReload();

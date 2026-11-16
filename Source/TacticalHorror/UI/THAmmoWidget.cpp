@@ -78,7 +78,7 @@ ATHWeaponBase* UTHAmmoWidget::GetShownWeapon() const
 		return nullptr;
 	}
 	const UTHWeaponComponent* Weapons = Pawn->FindComponentByClass<UTHWeaponComponent>();
-	return Weapons ? Weapons->GetCurrentWeapon() : nullptr;
+	return Weapons && !Weapons->AreWeaponsBlocked() ? Weapons->GetCurrentWeapon() : nullptr;
 }
 
 void UTHAmmoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
