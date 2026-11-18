@@ -143,8 +143,9 @@ private:
 	void ThinkSiren(float DeltaSeconds);
 	/** A charger: roars at Player, then charges. */
 	void StartRoar(APawn* Player);
-	/** A charger's charge ends: a hit (recovers briefly) or a miss (stumbles). */
-	void EndCharge(bool bHit);
+	/** A charger's charge ends: a hit (recovers briefly), a wall crash (stunned) or a miss (pulls up, then fights on). */
+	enum class EChargeEnd : uint8 { Hit, Crash, Miss };
+	void EndCharge(EChargeEnd How);
 	/** Stalker: goes straight for its prey from wherever it is (cornered, or a standoff). */
 	void Rush();
 	/** A charger: nothing in the way, its body's width, in a straight line to Player. */

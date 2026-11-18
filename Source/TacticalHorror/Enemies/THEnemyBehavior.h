@@ -482,7 +482,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, ClampMin = 0))
 	int32 ChargeTellCount = 3;
 
-	/** After a miss: seconds on the ground between going down and getting up (the whole stumble is longer). */
+	/** After a wall crash: seconds stunned, dizzy (the whole stumble is longer). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "s"))
 	float StumbleDownTime = 4.0f;
 
@@ -490,12 +490,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "s"))
 	float ChargeRecoverTime = 1.5f;
 
-	/** Running into a wall: particles where it hits, facing out of the wall (empty: none yet; needs a dust or debris pack). */
+	/** After a miss (sidestepped, past them, too far): seconds it pulls up before it turns and fights on; not stunned (only a
+	 *  wall crash stuns it: developer, 2026-11-17). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "s", ClampMin = 0))
+	float ChargeMissRecoverTime = 0.6f;
+
+	/** Running into a wall: particles where it hits, facing out of the wall (empty: none yet; needs an impact dust or debris
+	 *  pack: Vefects' ambient wind dust was tried and couldn't be seen, developer 2026-11-17). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides))
 	TObjectPtr<class UNiagaraSystem> WallCrashEffect;
 
-	/** A looping effect (Vefects' wind dust: developer, 2026-11-16) spawns only this long, then its particles live out their
-	 *  lives: a puff. 0 = it plays as made (a one-shot ends itself). */
+	/** A looping effect spawns only this long, then its particles live out their lives: a puff. 0 = it plays as made (a
+	 *  one-shot ends itself). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "s", ClampMin = 0))
 	float WallCrashEffectTime = 0.0f;
 
@@ -514,6 +520,12 @@ public:
 	/** A wall (or crate) this close in front of a charge, square on, is a crash; it doesn't slide along it (developer, 2026-11-12). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "cm"))
 	float WallCrashReach = 40.0f;
+
+	/** Running into scenery at a slant: its body stopped by a wall met at least this many degrees off parallel is a crash
+	 *  too; shallower, a graze, it slides along (developer, 2026-11-17: a wall met at an angle didn't crash it, it just
+	 *  stopped). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "deg", ClampMin = 0, ClampMax = 90))
+	float WallCrashMinAngle = 15.0f;
 
 	/** Running into a wall shakes the view of players within this distance, more the closer they are. 0 = no shake. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Charger", meta = (EditCondition = "Mode == ETHEnemyBehaviorMode::Charger", EditConditionHides, Units = "cm"))

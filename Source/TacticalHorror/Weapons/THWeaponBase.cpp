@@ -17,6 +17,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "Components/DecalComponent.h"
+#include "Settings/THDisplaySettingsSubsystem.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/ShapeComponent.h"
@@ -92,6 +93,8 @@ namespace
 		return Hold;
 	}
 }
+
+ATHWeaponBase::FTHLocalShot ATHWeaponBase::OnLocalShot;
 
 ATHWeaponBase::ATHWeaponBase()
 {
@@ -1016,6 +1019,7 @@ void ATHWeaponBase::FireShot()
 
 	const int32 SprayIndex = LocalSprayIndex;
 	const int32 ShotNumber = LocalShotNumber;
+	OnLocalShot.Broadcast(Pawn, ViewLocation, ViewRotation.Vector());
 
 	if (HasAuthority())
 	{
@@ -1549,6 +1553,8 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 	}
 
 	const FTHSurfaceImpact* Impact = WeaponData->ImpactSurfaces ? &WeaponData->ImpactSurfaces->GetImpact((EPhysicalSurface)Surface) : nullptr;
+	// Blood off in this player's settings: no spray or splatter, the sound only
+	const bool bShowVisuals = !(Impact && Impact->bIsBlood) || UTHDisplaySettingsSubsystem::IsBloodEnabledFor(this);
 
 	// The shot only brings the point, so the direction is from the shooter's eyes (close enough on other machines)
 	const APawn* Shooter = GetOwningPawn();
@@ -1578,17 +1584,17 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 		}
 	};
 	UNiagaraSystem* Effect = Impact && Impact->Effect ? Impact->Effect.Get() : WeaponData->ImpactEffect.Get();
-	if (Effect)
+	if (Effect && bShowVisuals)
 	{
 		SpawnEffect(Effect, Normal.Rotation());
 	}
-	if (Impact && Impact->ExitEffect)
+	if (Impact && Impact->ExitEffect && bShowVisuals)
 	{
 		SpawnEffect(Impact->ExitEffect, ShotDirection.Rotation());
 	}
 
 	UMaterialInterface* DecalMaterial = Impact ? UTHImpactSurfaces::PickRandom(Impact->Decals) : WeaponData->ImpactDecal.Get();
-	if (DecalMaterial && WeaponData->ImpactDecalSize > 0.0f)
+	if (DecalMaterial && WeaponData->ImpactDecalSize > 0.0f && bShowVisuals)
 	{
 		SpawnImpactDecal(DecalMaterial, Location, Normal, WeaponData->ImpactDecalSize, nullptr);
 	}
@@ -1600,7 +1606,7 @@ void ATHWeaponBase::PlayImpactEffects(const FVector& Location, const FVector& No
 	const AActor* HitActor = HitBody.GetActor();
 
 	// Blood on whatever is behind the hit
-	UMaterialInterface* Splatter = Impact ? UTHImpactSurfaces::PickRandom(Impact->SplatterDecals) : nullptr;
+	UMaterialInterface* Splatter = Impact && bShowVisuals ? UTHImpactSurfaces::PickRandom(Impact->SplatterDecals) : nullptr;
 	if (Splatter && Impact->SplatterDistance > 0.0f)
 	{
 		if (HitActor)

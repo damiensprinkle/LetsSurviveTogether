@@ -179,6 +179,8 @@ public:
 	/** Every machine: the pieces shot off so far (tests). */
 	int32 GetSeveredPieceCount() const { return SeveredPieces.Num(); }
 	AActor* GetSeveredPiece(int32 Index) const { return SeveredPieces.IsValidIndex(Index) ? SeveredPieces[Index].Get() : nullptr; }
+	/** Pieces that came to rest and were put to sleep. */
+	int32 GetSettledPieceCount() const { return SettledPieceCount; }
 
 	/** Its running steps (tests). */
 	const UTHFootstepComponent* GetFootsteps() const { return FootstepComponent; }
@@ -228,6 +230,13 @@ public:
 
 	/** Server: how many times it has run into a wall (tests). */
 	int32 GetWallCrashCount() const { return WallCrashCount; }
+
+	/** Its movement stopped by something (the capsule's blocking hit), kept for the AI: a charge into a wall at a slant. */
+	virtual void MoveBlockedBy(const FHitResult& Impact) override;
+	/** The last blocking hit, if it came no earlier than Since (world seconds). */
+	bool GetBlockSince(double Since, FHitResult& OutHit) const;
+	/** Wall crash effects spawned on this machine (tests). */
+	int32 GetWallCrashEffectCount() const { return WallCrashEffectCount; }
 
 	/** Server: how many blows it has landed on doors (tests). */
 	int32 GetDoorBangCount() const { return DoorBangCount; }
@@ -377,6 +386,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Wounds", meta = (ClampMin = 0, Units = "s"))
 	float SeveredPieceLifeSpan = 60.0f;
 
+	/** A piece's damping as it tumbles (each of its bodies): it rolls to a stop rather than spinning on. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Wounds", meta = (ClampMin = 0))
+	float SeveredPieceAngularDamping = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Wounds", meta = (ClampMin = 0))
+	float SeveredPieceLinearDamping = 0.2f;
+
+	/** Seconds after it comes off, a piece moving slower than Severed Piece Rest Speed (for half a second) is put to sleep
+	 *  where it lies; by three times this it sleeps whatever it does (developer, 2026-11-17: a leg stood on its foot and spun
+	 *  on the spot until it went). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Wounds", meta = (ClampMin = 0, Units = "s"))
+	float SeveredPieceSettleTime = 1.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Wounds", meta = (ClampMin = 0, Units = "cm/s"))
+	float SeveredPieceRestSpeed = 30.0f;
+
 	/** Seconds a corpse stays, at least (while the Director brings more, bodies would pile up; 2026-11-13); 0 = until the
 	 *  level ends. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy|Death", meta = (ClampMin = 0, Units = "s"))
@@ -441,7 +466,8 @@ private:
 	void MulticastSound(USoundBase* Sound, USoundAttenuation* Attenuation);
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void MulticastWallCrash(FVector_NetQuantize Point, FVector_NetQuantizeNormal Normal, class UNiagaraSystem* Effect, USoundBase* Sound, float ShakeRadius, float Shake, float EffectTime = 0.0f, float EffectScale = 1.0f);
+	/** Effect: the Wall Crash Effect of this behaviour (null: none), as set up there; sent along, as clients may not know it. */
+	void MulticastWallCrash(FVector_NetQuantize Point, FVector_NetQuantizeNormal Normal, const UTHEnemyBehavior* Effect, USoundBase* Sound, float ShakeRadius, float Shake);
 
 	UPROPERTY(Replicated)
 	float HeadDown = 0.0f;
@@ -465,6 +491,10 @@ private:
 
 	double VoiceBusyUntil = -1.0e9;
 	TWeakObjectPtr<USoundBase> LastVoice;
+	/** The voice playing now (on this machine), cut as it dies: a scream went on from the corpse (developer, 2026-11-17). */
+	TWeakObjectPtr<class UAudioComponent> VoiceAudio;
+	FHitResult LastBlock;
+	double LastBlockTime = -1.0e9;
 
 	UPROPERTY(ReplicatedUsing = OnRep_Death)
 	FTHEnemyDeath Death;
@@ -482,6 +512,7 @@ private:
 	bool bLyingDown = false;
 
 	int32 WallCrashCount = 0;
+	int32 WallCrashEffectCount = 0;
 	int32 DoorBangCount = 0;
 	FTimerHandle DoorBangTimer;
 
@@ -539,6 +570,9 @@ private:
 	int32 CurrentBodyIndex = 0;
 
 	TArray<TWeakObjectPtr<AActor>> SeveredPieces;
+	int32 SettledPieceCount = 0;
+	/** Watches a fallen piece until it rests, then puts it to sleep. */
+	void SettlePiece(USkeletalMeshComponent* Fallen);
 
 	bool bRagdoll = false;
 };

@@ -26,6 +26,11 @@ class TACTICALHORROR_API ATHWeaponBase : public AActor
 public:
 	ATHWeaponBase();
 
+	/** A shot fired by the player on this machine (theirs only): who, from their eyes, which way. Things only they
+	 *  see (a fake enemy, UTHSanityComponent) find out they were shot at. */
+	DECLARE_MULTICAST_DELEGATE_ThreeParams(FTHLocalShot, APawn* /*Shooter*/, const FVector& /*From*/, const FVector& /*Direction*/);
+	static FTHLocalShot OnLocalShot;
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void Tick(float DeltaSeconds) override;
 
@@ -212,8 +217,11 @@ private:
 	void PlayFireEffects();
 	void ShowMuzzleFlash(const FTransform& Muzzle);
 	void EjectShellCasing(const FTransform& Muzzle);
-	/** Surface is an EPhysicalSurface: what the shot hit, which picks the bullet hole or blood (UTHImpactSurfaces). */
+public:
+	/** Surface is an EPhysicalSurface: what the shot hit, which picks the bullet hole or blood (UTHImpactSurfaces). Public for the tests. */
 	void PlayImpactEffects(const FVector& Location, const FVector& Normal, uint8 Surface);
+
+private:
 	/** A decal of Size cm facing out of Normal, attached to Surface (found by a short trace if null) when that moves. */
 	void SpawnImpactDecal(class UMaterialInterface* Material, const FVector& Location, const FVector& Normal, float Size, class UPrimitiveComponent* Surface);
 

@@ -47,6 +47,12 @@
 #include "Sound/SoundBase.h"
 #include "UI/THStatusWidget.h"
 #include "Settings/THControlsSettingsSubsystem.h"
+#include "Settings/THDisplaySettingsSubsystem.h"
+#include "Player/Components/THSanityComponent.h"
+#include "Player/THFakeEnemy.h"
+#include "Player/THSanityData.h"
+#include "Engine/PointLight.h"
+#include "Components/PointLightComponent.h"
 #include "Engine/GameInstance.h"
 #include "Enemies/THEnemyAIController.h"
 #include "Enemies/THEnemyAnimInstance.h"
@@ -58,6 +64,11 @@
 #include "InputKeyEventArgs.h"
 #include "InputCoreTypes.h"
 #include "Tests/AutomationCommon.h"
+#if WITH_EDITORONLY_DATA
+#include "Rendering/SkeletalMeshLODModel.h"
+#include "Rendering/SkeletalMeshModel.h"
+#endif
+#include "Weapons/THDroppedMagazine.h"
 #include "Weapons/THWeaponBase.h"
 #include "Weapons/THWeaponComponent.h"
 #include "Weapons/THImpactSurfaces.h"
@@ -163,6 +174,8 @@ bool FTHFunctionalWeaponsTest::RunTest(const FString& Parameters)
 		int32 Reserve = 0;
 		double StartTime = 0.0;
 		bool bLightWasOn = false;
+		TWeakObjectPtr<ATHDroppedMagazine> DroppedMagazine;
+		bool bDroppedHiddenAtFirst = false;
 	};
 	TSharedRef<FState> State = MakeShared<FState>();
 
@@ -229,6 +242,15 @@ bool FTHFunctionalWeaponsTest::RunTest(const FString& Parameters)
 	});
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the reload to finish"), 15.0, [State]()
 	{
+		// The magazine it drops, as soon as it falls
+		if (!State->DroppedMagazine.IsValid() && State->Rifle.IsValid())
+		{
+			for (TActorIterator<ATHDroppedMagazine> It(State->Rifle->GetWorld()); It; ++It)
+			{
+				State->DroppedMagazine = *It;
+				State->bDroppedHiddenAtFirst = !It->IsShownToHolder();
+			}
+		}
 		return !State->Rifle.IsValid() || !State->Rifle->IsReloading();
 	}));
 	Step([this, State]()
@@ -241,6 +263,17 @@ bool FTHFunctionalWeaponsTest::RunTest(const FString& Parameters)
 		const int32 Magazine = Rifle->GetWeaponData()->MagazineSize;
 		TestEqual(TEXT("Magazine full after reloading"), Rifle->GetCurrentAmmo(), Magazine);
 		TestEqual(TEXT("Reserve gave exactly the missing rounds"), Rifle->GetReserveAmmo(), State->Reserve - (Magazine - State->Ammo));
+
+		// The dropped magazine falls from the third-person gun, under a crouched player's eyes: hidden from them until it lands
+		if (const ATHDroppedMagazine* Dropped = State->DroppedMagazine.Get())
+		{
+			TestTrue(TEXT("The dropped magazine is hidden from its holder as it falls"), State->bDroppedHiddenAtFirst);
+			TestTrue(TEXT("... and shown once it has landed"), Dropped->IsShownToHolder());
+		}
+		else
+		{
+			AddInfo(TEXT("No magazine dropped (the third-person gun copy isn't used here)"));
+		}
 
 		// Reloading a full magazine does nothing
 		Rifle->StartReload();
@@ -950,6 +983,34 @@ bool FTHEnemyHitTest::RunTest(const FString& Parameters)
 			Flesh && !Flesh->Sounds.IsEmpty() && !Flesh->HeadshotSounds.IsEmpty() && !Surfaces->PlayerHitSounds.IsEmpty() && Surfaces->SoundAttenuation);
 		TestTrue(TEXT("Flesh has entrance and exit wound effects and blood splatter, and no bullet holes"),
 			Flesh && Flesh->Effect && Flesh->ExitEffect && !Flesh->SplatterDecals.IsEmpty() && Flesh->Decals.IsEmpty());
+
+		// The Blood setting (developer, 2026-11-17: on / off): a flesh hit 1 m in front of a wall splatters the wall
+		// with blood on, and leaves nothing with it off
+		TestTrue(TEXT("Flesh counts as blood, so the Blood setting hides it (setup_impact_decals.py)"), Flesh && Flesh->bIsBlood);
+		UTHDisplaySettingsSubsystem* Display = World->GetGameInstance()->GetSubsystem<UTHDisplaySettingsSubsystem>();
+		ATHWeaponBase* Gun = GetWeapons()->GetCurrentWeapon();
+		const FVector Eyes = GetPlayer()->GetPawnViewLocation();
+		FHitResult Wall;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(THBloodSettingTest), false, GetPlayer());
+		Params.AddIgnoredActor(Enemy);
+		const FVector Ahead = GetPlayer()->GetControlRotation().Vector();
+		if (TestNotNull(TEXT("The display settings subsystem"), Display)
+			&& TestTrue(TEXT("A wall ahead of the player for the splatter"), World->LineTraceSingleByChannel(Wall, Eyes, Eyes + Ahead * 5000.0f, ECC_Visibility, Params)))
+		{
+			const FVector Point = Wall.ImpactPoint - (Wall.ImpactPoint - Eyes).GetSafeNormal() * 100.0f;
+			const bool bWasOn = Display->IsBloodEnabled();
+			Display->SetBloodEnabled(false);
+			const int32 Before = CountDecalsNear(World, Wall.ImpactPoint, 120.0f);
+			Gun->PlayImpactEffects(Point, -Ahead, (uint8)SurfaceType7);
+			const int32 Off = CountDecalsNear(World, Wall.ImpactPoint, 120.0f) - Before;
+			Display->SetBloodEnabled(true);
+			Gun->PlayImpactEffects(Point, -Ahead, (uint8)SurfaceType7);
+			const int32 On = CountDecalsNear(World, Wall.ImpactPoint, 120.0f) - Before - Off;
+			Display->SetBloodEnabled(bWasOn);
+			AddInfo(FString::Printf(TEXT("Blood splatters on the wall %.0f cm away: %d with Blood off, %d with it on"), Wall.Distance, Off, On));
+			TestEqual(TEXT("Blood off: no splatter on the wall"), Off, 0);
+			TestEqual(TEXT("Blood on: a splatter on the wall"), On, 1);
+		}
 	});
 
 	// A headshot kills it (gun damage x headshot multiplier); it drops as a ragdoll
@@ -1163,6 +1224,8 @@ bool FTHEnemyLineupTest::RunTest(const FString& Parameters)
 			AddInfo(FString::Printf(TEXT("%s: pelvis from %.0f to %.0f cm above the floor"), *Entry.Name, Entry.PelvisZ - Entry.FloorZ, PelvisZ - Entry.FloorZ));
 			TestTrue(*(Entry.Name + TEXT(" died")), Enemy->IsDead());
 			TestTrue(*(Entry.Name + TEXT(" became a ragdoll")), Enemy->IsRagdoll());
+			// Its voice stopped as it died (developer, 2026-11-17: a hunter's scream went on from the corpse)
+			TestFalse(*(Entry.Name + TEXT(" is silent once dead")), Enemy->IsVoicePlaying());
 			// The M03 half bodies' physics asset has no pelvis (their meshes have no hips or legs): check their chest
 			const double LyingZ = Entry.bCrawler ? BodyCentre(Enemy->GetMesh(), TEXT("spine_02")).Z : PelvisZ;
 			TestTrue(*FString::Printf(TEXT("%s lies on the floor, not through it (%s %.0f cm above the floor)"), *Entry.Name,
@@ -1396,6 +1459,69 @@ namespace THFunctionalBehavior
 		}
 	}
 
+	/**
+	 * The farthest any vertex of Body is drawn from its pelvis, cm, skinned on the CPU from the pose it draws (its
+	 * component-space bones) and its imported model; Where: which bone pulled it most. For stretched skin (developer,
+	 * 2026-11-16: cut limbs left lines several feet long). -1 without the model (editor data).
+	 */
+	static float FarthestVertex(const USkeletalMeshComponent* Body, FString& Where)
+	{
+#if WITH_EDITORONLY_DATA
+		USkeletalMesh* Mesh = Body ? Body->GetSkeletalMeshAsset() : nullptr;
+		const FSkeletalMeshModel* Model = Mesh ? Mesh->GetImportedModel() : nullptr;
+		const int32 Pelvis = Body ? Body->GetBoneIndex(TEXT("pelvis")) : INDEX_NONE;
+		const TArray<FTransform>& Pose = Body ? Body->GetComponentSpaceTransforms() : TArray<FTransform>();
+		if (!Model || Model->LODModels.IsEmpty() || !Pose.IsValidIndex(Pelvis))
+		{
+			return -1.0f;
+		}
+		const TArray<FMatrix44f>& RefInverse = Mesh->GetRefBasesInvMatrix();
+		TArray<FMatrix44f> Skin;
+		Skin.SetNum(Pose.Num());
+		for (int32 Bone = 0; Bone < Pose.Num() && Bone < RefInverse.Num(); ++Bone)
+		{
+			Skin[Bone] = RefInverse[Bone] * FMatrix44f(Pose[Bone].ToMatrixWithScale());
+		}
+		const FVector3f Centre(Pose[Pelvis].GetTranslation());
+		float Farthest = 0.0f;
+		for (const FSkelMeshSection& Section : Model->LODModels[0].Sections)
+		{
+			for (const FSoftSkinVertex& Vertex : Section.SoftVertices)
+			{
+				FVector3f Position = FVector3f::ZeroVector;
+				float Total = 0.0f;
+				int32 Heaviest = INDEX_NONE;
+				float HeaviestWeight = 0.0f;
+				for (int32 Influence = 0; Influence < MAX_TOTAL_INFLUENCES; ++Influence)
+				{
+					const float Weight = Vertex.InfluenceWeights[Influence];
+					const int32 Bone = Section.BoneMap.IsValidIndex(Vertex.InfluenceBones[Influence]) ? Section.BoneMap[Vertex.InfluenceBones[Influence]] : INDEX_NONE;
+					if (Weight <= 0.0f || !Skin.IsValidIndex(Bone))
+					{
+						continue;
+					}
+					Position += Skin[Bone].TransformPosition(Vertex.Position) * Weight;
+					Total += Weight;
+					if (Weight > HeaviestWeight)
+					{
+						HeaviestWeight = Weight;
+						Heaviest = Bone;
+					}
+				}
+				const float Distance = Total > 0.0f ? FVector3f::Dist(Position / Total, Centre) : 0.0f;
+				if (Distance > Farthest)
+				{
+					Farthest = Distance;
+					Where = Heaviest != INDEX_NONE ? Body->GetBoneName(Heaviest).ToString() : TEXT("?");
+				}
+			}
+		}
+		return Farthest;
+#else
+		return -1.0f;
+#endif
+	}
+
 	/** Degrees the neck-to-head line leans from upright: how far the head is bowed. */
 	static float NeckLean(const ATHEnemyCharacter* Enemy)
 	{
@@ -1553,6 +1679,17 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 		const UTHStatusWidget* Screen = PC ? PC->GetStatusWidget() : nullptr;
 		TestTrue(TEXT("The player controller has the view modifier for hits and death"), PC && PC->GetBodyCameraModifier());
 		TestTrue(TEXT("Blood splattered on the player's screen"), Screen && Screen->GetVisibleBloodCount() > 0);
+		// With Blood off in Settings a hit adds none (2026-11-17)
+		UTHDisplaySettingsSubsystem* Display = GetPlayer()->GetGameInstance()->GetSubsystem<UTHDisplaySettingsSubsystem>();
+		if (UTHStatusWidget* HitScreen = PC ? PC->GetStatusWidget() : nullptr; HitScreen && Display)
+		{
+			const bool bWasOn = Display->IsBloodEnabled();
+			Display->SetBloodEnabled(false);
+			const int32 Before = HitScreen->GetVisibleBloodCount();
+			HitScreen->ShowHit(1.0f);
+			TestEqual(TEXT("Blood off: a hit puts no more blood on the screen"), HitScreen->GetVisibleBloodCount(), Before);
+			Display->SetBloodEnabled(bWasOn);
+		}
 
 		// The music speeds up while an enemy nearby is going for someone
 		const ATHEnemyCharacter* Attacker = State->Enemy.Get();
@@ -1781,6 +1918,107 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 			Enemy && Enemy->GetAnimations() ? *Enemy->GetAnimations()->WalkTravel.ToCompactString() : TEXT("-")));
 		TestTrue(TEXT("Crawling, its body stays on its capsule (within 60 cm)"), Off >= 0.0 && Off < 60.0);
 	});
+	// The pieces come to rest, put to sleep where they lie (developer, 2026-11-17: a leg stood on its foot and spun on and on)
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(3.0));
+	Step([this, State]()
+	{
+		const ATHEnemyCharacter* Enemy = State->Enemy.Get();
+		if (!Enemy)
+		{
+			return;
+		}
+		FString Speeds;
+		int32 Awake = 0;
+		for (int32 Index = 0; Index < Enemy->GetSeveredPieceCount(); ++Index)
+		{
+			const AActor* Piece = Enemy->GetSeveredPiece(Index);
+			const USkeletalMeshComponent* Fallen = Piece ? Piece->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+			double Fastest = 0.0, Spin = 0.0;
+			for (const FBodyInstance* Each : Fallen ? Fallen->Bodies : TArray<FBodyInstance*>())
+			{
+				if (Each && Each->IsInstanceSimulatingPhysics())
+				{
+					Fastest = FMath::Max(Fastest, Each->GetUnrealWorldVelocity().Size());
+					Spin = FMath::Max(Spin, FMath::RadiansToDegrees(Each->GetUnrealWorldAngularVelocityInRadians().Size()));
+					Awake += Each->IsInstanceAwake() ? 1 : 0;
+				}
+			}
+			Speeds += FString::Printf(TEXT("%s %.0f cm/s %.0f deg/s; "), *GetNameSafe(Fallen ? Fallen->GetSkeletalMeshAsset() : nullptr), Fastest, Spin);
+		}
+		AddInfo(FString::Printf(TEXT("Pieces 5 s after coming off: %d of %d settled, %d bodies awake: %s"), Enemy->GetSettledPieceCount(),
+			Enemy->GetSeveredPieceCount(), Awake, *Speeds));
+		TestTrue(TEXT("The fallen pieces settled (asleep, not spinning)"), Enemy->GetSeveredPieceCount() > 0 && Enemy->GetSettledPieceCount() == Enemy->GetSeveredPieceCount());
+	});
+
+	// A Priest's legs off, alive and dead: no skin drawn far from the body (developer, 2026-11-16: lines several feet long
+	// from a Priest whose limbs came off). Its look only, from DA_ZombieLooks
+	Step([this, State]()
+	{
+		ResetScene(State, 0.0f);
+		const UTHEnemyAppearance* Zombies = LoadObject<UTHEnemyAppearance>(nullptr, TEXT("/Game/Enemies/Appearance/DA_ZombieLooks.DA_ZombieLooks"));
+		UTHEnemyAppearance* Priest = Zombies ? DuplicateObject<UTHEnemyAppearance>(Zombies, GetTransientPackage()) : nullptr;
+		if (Priest)
+		{
+			Priest->Looks.RemoveAll([](const FTHEnemyLook& Look) { return Look.Bodies.IsEmpty() || !Look.Bodies[0] || Look.Bodies[0]->GetName() != TEXT("SK_Priest"); });
+		}
+		UTHEnemyBehavior* Still = DuplicateObject<UTHEnemyBehavior>(LoadBehavior(TEXT("DA_Hunter")), GetTransientPackage());
+		if (Still && TestTrue(TEXT("DA_ZombieLooks has the Priest"), Priest && Priest->Looks.Num() == 1))
+		{
+			Still->StaggerTime = 0.0f;
+			Still->Health = 1000.0f;
+			Still->Appearance = Priest;
+		}
+		SpawnEnemy(this, State, PlayerX + 900.0, 180.0f, Still);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
+	auto ShootPriest = [](ATHEnemyCharacter* Enemy, FName Bone, float Damage)
+	{
+		FHitResult Hit;
+		Hit.BoneName = Bone;
+		Hit.ImpactPoint = Enemy->GetMesh()->GetSocketLocation(Bone);
+		Hit.Component = Enemy->GetMesh();
+		UGameplayStatics::ApplyPointDamage(Enemy, Damage, -Enemy->GetActorForwardVector(), Hit, GetController(), GetPlayer(), UDamageType::StaticClass());
+	};
+	auto Measure = [this, State](const TCHAR* When)
+	{
+		const ATHEnemyCharacter* Enemy = State->Enemy.Get();
+		const USkeletalMeshComponent* Seen = Enemy ? Enemy->GetVisibleBody() : nullptr;
+		FString Where;
+		const float Far = FarthestVertex(Seen, Where);
+		AddInfo(FString::Printf(TEXT("Priest %s: body %s (%s), %d bones collapsed, farthest vertex %.0f cm from the pelvis (%s)"), When,
+			*GetNameSafe(Seen ? Seen->GetSkeletalMeshAsset() : nullptr), Enemy && Seen != Enemy->GetMesh() ? TEXT("retargeted") : TEXT("its own"),
+			Enemy ? Enemy->GetCollapsedBoneCount() : -1, Far, *Where));
+		TestTrue(*FString::Printf(TEXT("Priest %s: no skin stretched far from the body"), When), Far >= 0.0f && Far < 120.0f);
+	};
+	Step([State, ShootPriest, Measure]()
+	{
+		if (ATHEnemyCharacter* Enemy = State->Enemy.Get())
+		{
+			ShootPriest(Enemy, TEXT("thigh_l"), 60.0f);
+		}
+		Measure(TEXT("standing, left leg off"));
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([State, Measure]() { Measure(TEXT("crawling a second later")); });
+	Step([State, ShootPriest]()
+	{
+		if (ATHEnemyCharacter* Enemy = State->Enemy.Get())
+		{
+			ShootPriest(Enemy, TEXT("spine_02"), 5000.0f);
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.5));
+	Step([State, ShootPriest, Measure]()
+	{
+		Measure(TEXT("dead"));
+		if (ATHEnemyCharacter* Enemy = State->Enemy.Get())
+		{
+			ShootPriest(Enemy, TEXT("thigh_r"), 60.0f);
+			ShootPriest(Enemy, TEXT("upperarm_r"), 60.0f);
+		}
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.0));
+	Step([State, Measure]() { Measure(TEXT("dead, right leg and arm shot off the corpse")); });
 
 	// Each its own (developer, 2026-11-13: a group never moves in step): two hunters, two paces, within its Variation
 	Step([this, State]()
@@ -2130,7 +2368,7 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 		}
 	});
 
-	// Charger, seeing the player 11 m away: roars, charges; the player sidesteps; it misses and goes down a long while
+	// Charger, seeing the player 11 m away: roars, charges; the player sidesteps; it misses, pulls up and comes back
 	Step([this, State]()
 	{
 		ResetScene(State, 0.0f);
@@ -2166,7 +2404,7 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 		APawn* Player = GetPlayer();
 		Player->TeleportTo(Player->GetActorLocation() + FVector(0.0f, 350.0f, 0.0f), Player->GetActorRotation());
 	});
-	WaitForState(this, State, { ETHEnemyState::Stumble }, 4.0, TEXT("the charger to miss the sidestepping player and go down"));
+	WaitForState(this, State, { ETHEnemyState::Stumble }, 4.0, TEXT("the charger to miss the sidestepping player and pull up"));
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
 	Step([this, State]()
 	{
@@ -2180,19 +2418,29 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("The charger stomped as it ran"), Steps && Steps->GetStepCount() >= 2);
 			TestTrue(TEXT("Most of its steps are its feet landing (not every stride's distance)"), Steps
 				&& Steps->GetFootLandingCount() * 2 > Steps->GetStepCount());
+			// On time: a foot still going down well after its stomp had not landed yet (by the ankles: ~0.25 s, measured on the clip)
+			AddInfo(FString::Printf(TEXT("A foot was still going down at most %.3f s after its stomp"), Steps ? Steps->GetLatestLowAfterLanding() : -1.0f));
+			TestTrue(TEXT("Each stomp plays as the foot is down, not on its way"), Steps && Steps->GetLatestLowAfterLanding() < 0.1f);
+			if (Steps)
+			{
+				AddInfo(TEXT("Charger's last landings: ") + FString::Join(Steps->GetRecentLandings(), TEXT("; ")));
+			}
 		}
 	});
-	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(5.0));
+	// A miss doesn't stun it (developer, 2026-11-17; only a wall does): it pulls up and soon fights on
 	Step([this, State]()
 	{
 		const ATHEnemyCharacter* Enemy = State->Enemy.Get();
 		const UTHEnemyAnimInstance* Anim = Enemy ? Cast<UTHEnemyAnimInstance>(Enemy->GetMesh()->GetAnimInstance()) : nullptr;
-		AddInfo(FString::Printf(TEXT("Charger 5 s after its miss: %s, moved %.0f cm, player health %.0f"), *StateName(StateOf(State)),
-			Enemy ? FVector::Dist2D(Enemy->GetActorLocation(), State->Start) : -1.0, PlayerHealth()->GetHealth()));
-		TestEqual(TEXT("After a miss it is still down 5 s later (time to run)"), StateName(StateOf(State)), StateName(ETHEnemyState::Stumble));
-		TestTrue(TEXT("Down, it doesn't move"), Enemy && FVector::Dist2D(Enemy->GetActorLocation(), State->Start) < 30.0);
-		TestTrue(TEXT("Its body plays the stumble (stunned on its feet)"), Anim && Anim->IsStumbling());
+		TestFalse(TEXT("Missing, it isn't stunned (no stumble)"), Anim && Anim->IsStumbling());
 		TestEqual(TEXT("The sidestepping player wasn't hit"), PlayerHealth()->GetHealth(), State->PlayerHealth);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(1.5));
+	Step([this, State]()
+	{
+		const UTHEnemyBehavior* Charger = LoadBehavior(TEXT("DA_Charger"));
+		AddInfo(FString::Printf(TEXT("Charger 2 s after its miss: %s (pulls up for %.1f s)"), *StateName(StateOf(State)), Charger ? Charger->ChargeMissRecoverTime : -1.0f));
+		TestNotEqual(TEXT("2 s after a miss it is back after the player"), StateName(StateOf(State)), StateName(ETHEnemyState::Stumble));
 	});
 
 	// Charger, the player standing still: the charge hits for its ChargeDamage. The real one kills outright (developer,
@@ -2255,7 +2503,52 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("It crashed into the wall once"), Enemy ? Enemy->GetWallCrashCount() : -1, 1);
 		TestTrue(TEXT("It went down at the wall"), Gap >= -5.0 && Gap < 100.0);
 		TestTrue(TEXT("DA_Charger has crash sounds"), Charger && Charger->WallCrashSounds.Num() > 0);
+		// Its effect, when DA_Charger has one (none for now: the wind dust tried couldn't be seen, developer 2026-11-17)
+		TestEqual(TEXT("The crash effect spawned if it has one"), Enemy ? Enemy->GetWallCrashEffectCount() : -1, Charger && Charger->WallCrashEffect ? 1 : 0);
 		TestEqual(TEXT("The player behind the wall wasn't hit"), PlayerHealth()->GetHealth(), State->PlayerHealth);
+		if (AActor* ToRemove = State->Wall.Get())
+		{
+			ToRemove->Destroy();
+		}
+	});
+
+	// Charger into a wall at a slant, 20° off parallel (developer, 2026-11-17: at an angle it didn't crash, it just
+	// stopped): the traces ahead don't count it square on, its body running into it does
+	Step([this, State]()
+	{
+		ResetScene(State, 0.0f);
+		SpawnEnemy(this, State, PlayerX + 1100.0, 180.0f, LoadBehavior(TEXT("DA_Charger")));
+	});
+	WaitForState(this, State, { ETHEnemyState::Charge }, 6.0, TEXT("the charger to charge (slanted wall test)"));
+	Step([this, State]()
+	{
+		const APawn* Player = GetPlayer();
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const ACharacter* Walker = Cast<ACharacter>(Player);
+		const double FloorZ = Player->GetActorLocation().Z - (Walker ? Walker->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() : 90.0);
+		// Its face turned 70° from square to the charge: met 20° off parallel
+		AStaticMeshActor* Wall = Player->GetWorld()->SpawnActor<AStaticMeshActor>(FVector(PlayerX + 450.0, HallY, FloorZ + 100.0),
+			FRotator(0.0f, 70.0f, 0.0f), Params);
+		if (TestNotNull(TEXT("The slanted test wall spawns"), Wall))
+		{
+			Wall->GetStaticMeshComponent()->SetMobility(EComponentMobility::Movable);
+			Wall->GetStaticMeshComponent()->SetStaticMesh(LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")));
+			Wall->GetStaticMeshComponent()->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+			Wall->SetActorScale3D(FVector(0.3, 6.0, 2.0));
+			State->Wall = Wall;
+		}
+	});
+	WaitForState(this, State, { ETHEnemyState::Stumble }, 5.0, TEXT("the charger to crash into the slanted wall"));
+	Step([this, State]()
+	{
+		const ATHEnemyCharacter* Enemy = State->Enemy.Get();
+		const AActor* Wall = State->Wall.Get();
+		const UTHEnemyAnimInstance* Anim = Enemy ? Cast<UTHEnemyAnimInstance>(Enemy->GetMesh()->GetAnimInstance()) : nullptr;
+		AddInfo(FString::Printf(TEXT("Charger into a slanted wall: %d crash(es), %.0f cm from the wall's middle"), Enemy ? Enemy->GetWallCrashCount() : -1,
+			Enemy && Wall ? FVector::Dist2D(Enemy->GetActorLocation(), Wall->GetActorLocation()) : -1.0));
+		TestEqual(TEXT("It crashed into the slanted wall"), Enemy ? Enemy->GetWallCrashCount() : -1, 1);
+		TestTrue(TEXT("Crashed, it is stunned"), Anim && Anim->IsStumbling());
 		if (AActor* ToRemove = State->Wall.Get())
 		{
 			ToRemove->Destroy();
@@ -3276,4 +3569,196 @@ bool FTHEnemyBehaviorsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// Sanity (GDD 7.2, developer 2026-11-17): drains in the dark, comes back under a lamp, a heartbeat, a wandering aim and
+// sounds that aren't there when low, and at the bottom a fake enemy that vanishes as it reaches the player, or
+// dissolves when shot. Sounds and effects can't be heard or seen headless: the test counts what was played.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHSanityTest, "TacticalHorror.Functional.Sanity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHSanityTest::RunTest(const FString& Parameters)
+{
+	struct FState
+	{
+		TWeakObjectPtr<AActor> Lamp;
+		TWeakObjectPtr<ATHFakeEnemy> Fake;
+		int32 Hallucinations = 0;
+	};
+	TSharedRef<FState> State = MakeShared<FState>();
+	auto Mind = []() { return GetPlayer() ? GetPlayer()->FindComponentByClass<UTHSanityComponent>() : nullptr; };
+
+	StartPlay(this);
+	Step([this, Mind]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		const UTHSanityData* Data = Sanity ? Sanity->GetData() : nullptr;
+		if (!TestNotNull(TEXT("The player has a sanity component"), Sanity) || !TestNotNull(TEXT("DA_Sanity loads (setup_sanity.py)"), Data))
+		{
+			return;
+		}
+		// Full at spawn; the map is dark, so it has drained a little while the gun was drawn
+		AddInfo(FString::Printf(TEXT("Sanity after spawning in the dark: %.2f"), Sanity->GetSanity()));
+		TestTrue(TEXT("A new player starts at full sanity"), Sanity->GetSanity() >= 95.0f);
+		TestTrue(TEXT("Heartbeat sounds are set"), !Data->HeartbeatSounds.IsEmpty());
+		TestTrue(TEXT("The fake enemy has looks, a run and a shout"), Data->FakeEnemyLooks && Data->FakeEnemyAnims && !Data->FakeEnemySounds.IsEmpty());
+		TestTrue(TEXT("Some hallucinations"), Data->Hallucinations.Num() >= 5);
+		for (const FTHHallucinationSound& Each : Data->Hallucinations)
+		{
+			TestTrue(*FString::Printf(TEXT("Hallucination %s has sounds"), *Each.Name.ToString()), !Each.Sounds.IsEmpty() && !Each.Sounds.Contains(nullptr));
+		}
+		Sanity->SetSanity(80.0f);
+	});
+	// The test map has no lamps: dark. Solo, so never alone
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(2.0));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		AddInfo(FString::Printf(TEXT("In the dark: sanity %.2f, %.2f a second"), Sanity->GetSanity(), Sanity->GetRate()));
+		TestTrue(TEXT("The test map counts as dark"), Sanity->IsInDarkness());
+		TestFalse(TEXT("Solo, a player is never alone"), Sanity->IsAlone());
+		TestTrue(TEXT("Sanity drains in the dark"), Sanity->GetSanity() < 80.0f && Sanity->GetRate() < 0.0f);
+		// A lamp right over them
+		UWorld* World = GetPlayer()->GetWorld();
+		APointLight* Lamp = World->SpawnActor<APointLight>(GetPlayer()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f), FRotator::ZeroRotator);
+		if (Lamp)
+		{
+			Lamp->PointLightComponent->SetAttenuationRadius(1000.0f);
+			Lamp->PointLightComponent->SetIntensity(5000.0f);
+		}
+		State->Lamp = Lamp;
+	});
+	// The lamps are listed every 5 s
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(5.6));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		AddInfo(FString::Printf(TEXT("Under a lamp: sanity %.2f, %+.2f a second"), Sanity->GetSanity(), Sanity->GetRate()));
+		TestFalse(TEXT("Under a lamp it isn't dark"), Sanity->IsInDarkness());
+		TestTrue(TEXT("Sanity comes back under a lamp"), Sanity->GetRate() > 0.0f);
+		if (AActor* Lamp = State->Lamp.Get())
+		{
+			Lamp->Destroy();
+		}
+		Sanity->SetSanity(30.0f);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(2.0));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		AddInfo(FString::Printf(TEXT("At sanity %.0f: %d heartbeats in 2 s, sway (%.2f, %.2f) deg"), Sanity->GetSanity(), Sanity->GetHeartbeatCount(),
+			Sanity->GetSway().X, Sanity->GetSway().Y));
+		TestTrue(TEXT("Low sanity: the heartbeat plays (about 100 a minute at 30)"), Sanity->GetHeartbeatCount() >= 2);
+		TestTrue(TEXT("Low sanity: the aim wanders"), Sanity->GetSway().Size() > 0.01);
+		// The view's edges darken: the camera's post process carries the vignette
+		bool bInView = false;
+		const TArray<FPostProcessSettings>* Blends = nullptr;
+		const TArray<float>* Weights = nullptr;
+		if (const APlayerCameraManager* Camera = GetController()->PlayerCameraManager)
+		{
+			Camera->GetCachedPostProcessBlends(Blends, Weights);
+			for (int32 i = 0; Blends && Weights && i < Blends->Num(); ++i)
+			{
+				bInView |= (*Blends)[i].bOverride_VignetteIntensity && (*Blends)[i].VignetteIntensity > 0.5f && (*Weights)[i] > 0.0f;
+			}
+		}
+		AddInfo(FString::Printf(TEXT("Blackout: vignette %.2f, weight %.2f"), Sanity->GetBlackoutVignette(), Sanity->GetBlackoutWeight()));
+		TestTrue(TEXT("Low sanity: the edges of the view darken"), Sanity->GetBlackoutWeight() > 0.0f && Sanity->GetBlackoutVignette() > 0.5f);
+		TestTrue(TEXT("The darkening reaches the view"), bInView);
+		State->Hallucinations = Sanity->GetHallucinationCount();
+		TestTrue(TEXT("Footsteps that aren't there can play"), Sanity->PlayHallucination(TEXT("Footsteps")) && Sanity->GetLastHallucination() == TEXT("Footsteps"));
+		TestTrue(TEXT("A hallucination is picked for this sanity"), Sanity->PlayHallucination());
+		const UTHSanityData* Data = Sanity->GetData();
+		const FTHHallucinationSound* Picked = Data->Hallucinations.FindByPredicate([Sanity](const FTHHallucinationSound& Each) { return Each.Name == Sanity->GetLastHallucination(); });
+		AddInfo(FString::Printf(TEXT("Picked: %s"), *Sanity->GetLastHallucination().ToString()));
+		TestTrue(TEXT("The one picked is heard at this sanity"), Picked && Picked->BelowSanity >= Sanity->GetSanity());
+		TestEqual(TEXT("Both counted"), Sanity->GetHallucinationCount(), State->Hallucinations + 2);
+		Sanity->SetSanity(0.0f);
+	});
+	// At the bottom, after Fake Enemy Delay (3 s), something comes for them
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("a fake enemy to come"), 6.0, [Mind]() { return Mind()->GetFakeEnemy() != nullptr; }));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		ATHFakeEnemy* Fake = Sanity->GetFakeEnemy();
+		State->Fake = Fake;
+		if (!TestNotNull(TEXT("A fake enemy came at sanity 0"), Fake))
+		{
+			return;
+		}
+		const FVector ToIt = Fake->GetActorLocation() - GetPlayer()->GetActorLocation();
+		const FVector Ahead = GetPlayer()->GetControlRotation().Vector().GetSafeNormal2D();
+		AddInfo(FString::Printf(TEXT("Fake enemy %.0f cm away, %.0f deg off the view"), ToIt.Size2D(),
+			FMath::RadiansToDegrees(FMath::Acos(FVector::DotProduct(ToIt.GetSafeNormal2D(), Ahead)))));
+		TestTrue(TEXT("It wears a body"), Fake->GetBody() && Fake->GetBody()->GetSkeletalMeshAsset());
+		TestTrue(TEXT("It runs (its animation)"), Fake->GetBody() && Fake->GetBody()->IsPlaying());
+		TestTrue(TEXT("It comes from in front of the player"), FVector::DotProduct(ToIt.GetSafeNormal2D(), Ahead) > 0.5);
+		// The enemies' meshes face their +Y: that must point at the player, not off to the side
+		const float Facing = Fake->GetBody() ? FVector::DotProduct(Fake->GetBody()->GetRightVector().GetSafeNormal2D(), -ToIt.GetSafeNormal2D()) : -1.0f;
+		AddInfo(FString::Printf(TEXT("Its body faces %.0f deg off the player"), FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(Facing, -1.0f, 1.0f)))));
+		TestTrue(TEXT("It faces the player as it runs"), Facing > 0.9f);
+		TestFalse(TEXT("It's only on this machine"), Fake->GetIsReplicated());
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitUntil(this, TEXT("the fake enemy to reach the player and vanish"), 7.0, [State]()
+	{
+		return !State->Fake.IsValid() || !State->Fake->GetEndReason().IsEmpty();
+	}));
+	Step([this, State]()
+	{
+		const FString Reason = State->Fake.IsValid() ? State->Fake->GetEndReason() : FString(TEXT("(destroyed)"));
+		AddInfo(FString::Printf(TEXT("The fake enemy went: %s"), *Reason));
+		TestTrue(TEXT("It vanished as it reached the player"), Reason == TEXT("reached") || Reason == TEXT("(destroyed)"));
+		const UTHHealthComponent* Health = GetPlayer()->FindComponentByClass<UTHHealthComponent>();
+		TestEqual(TEXT("It did no harm"), Health->GetHealth(), Health->GetMaxHealth());
+	});
+	// Another, shot at: it dissolves
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.3));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		if (!TestTrue(TEXT("Another fake enemy can be sent"), Sanity->SendFakeEnemy()))
+		{
+			return;
+		}
+		State->Fake = Sanity->GetFakeEnemy();
+	});
+	// Aim at its chest, twice (the camera, which the shot comes from, follows the aim a frame later; it runs straight
+	// at the player, so it stays on the line), then fire
+	auto AimAtFake = [State]()
+	{
+		if (const ATHFakeEnemy* Fake = State->Fake.Get())
+		{
+			const FVector Eyes = GetPlayer()->GetPawnViewLocation();
+			GetController()->SetControlRotation((Fake->GetActorLocation() + FVector(0.0f, 0.0f, 120.0f) - Eyes).Rotation());
+		}
+	};
+	Step(AimAtFake);
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.1));
+	Step(AimAtFake);
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.1));
+	Step([this, Mind, State]()
+	{
+		UTHSanityComponent* Sanity = Mind();
+		ATHFakeEnemy* Fake = State->Fake.Get();
+		if (!TestNotNull(TEXT("The fake enemy is still coming"), Fake))
+		{
+			return;
+		}
+		AddInfo(FString::Printf(TEXT("Shooting the fake enemy %.0f cm away"), FVector::Dist2D(Fake->GetActorLocation(), GetPlayer()->GetActorLocation())));
+		ATHWeaponBase* Gun = GetWeapons()->GetCurrentWeapon();
+		Gun->StartFire();
+		Gun->StopFire();
+		TestEqual(TEXT("Shot, it dissolves"), Fake->GetEndReason(), FString(TEXT("shot")));
+		TestEqual(TEXT("Into the shot effect"), Fake->GetDissolveEffectCount(), Sanity->GetData()->FakeEnemyShotEffect ? 1 : 0);
+		Sanity->SetSanity(UTHSanityComponent::MaxSanity);
+	});
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitGameTime(0.5));
+	Step([this, Mind]()
+	{
+		TestFalse(TEXT("Full sanity: the aim is back where the player put it"), Mind()->GetSway().Size() > 0.2);
+	});
+
+	EndPlay(this);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
+

@@ -181,4 +181,8 @@ public:
 	/** How loud those footsteps play (developer, 2026-11-15 and 16: the charger's stomp was too loud, then still a bit). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (ClampMin = 0, ClampMax = 2))
 	float FootstepVolume = 0.3f;
+
+	/** And their pitch: above 1 lighter, below 1 heavier (developer, 2026-11-16: the charger sounded heavier than it looks). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Appearance", meta = (ClampMin = 0.5, ClampMax = 2))
+	float FootstepPitch = 1.0f;
 };

@@ -9,6 +9,8 @@
 #include "GroomBindingAsset.h"
 #include "GroomAsset.h"
 #include "GroomComponent.h"
+#include "Components/AudioComponent.h"
+#include "Settings/THDisplaySettingsSubsystem.h"
 #include "Components/CapsuleComponent.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
@@ -48,7 +50,8 @@ ATHEnemyCharacter::ATHEnemyCharacter(const FObjectInitializer& ObjectInitializer
 	FootstepComponent->bMakesNoise = false;
 	FootstepComponent->MinStepSpeed = 250.0f;	// running only: a shambling walk stays quiet
 	// Each step as a foot lands (developer, 2026-11-16: the charger's stomps didn't line up with its feet)
-	FootstepComponent->FootBones = { TEXT("foot_l"), TEXT("foot_r") };
+	FootstepComponent->FootBones = { TEXT("ball_l"), TEXT("ball_r") };
+	FootstepComponent->FallbackFootBones = { TEXT("foot_l"), TEXT("foot_r") };
 
 	FleshMaterial = TSoftObjectPtr<UPhysicalMaterial>(FSoftObjectPath(TEXT("/Game/Effects/PhysicalMaterials/PM_Flesh.PM_Flesh")));
 
@@ -139,7 +142,7 @@ void ATHEnemyCharacter::ApplyAppearance()
 	AppliedAppearanceSeed = AppearanceSeed;
 	FRandomStream Random(AppearanceSeed);
 	// Its own footsteps if these bodies have some (a charger's stomp), on every machine
-	FootstepComponent->SetStepSoundOverride(Looks->FootstepSounds, Looks->FootstepVolume);
+	FootstepComponent->SetStepSoundOverride(Looks->FootstepSounds, Looks->FootstepVolume, Looks->FootstepPitch);
 
 	// The look, by weight
 	float Total = 0.0f;
@@ -901,7 +904,7 @@ void ATHEnemyCharacter::ApplySevered(ETHLimb Limb)
 	{
 		return;
 	}
-	if (SeverEffect)
+	if (SeverEffect && UTHDisplaySettingsSubsystem::IsBloodEnabledFor(this))
 	{
 		// On the stump: the parent bone, where the limb was (the limb's own bones are shrunk to nothing, and so would it be)
 		UNiagaraFunctionLibrary::SpawnSystemAttached(SeverEffect, Body, Body->GetParentBone(Bone), Wound.GetLocation(),
@@ -956,6 +959,68 @@ void ATHEnemyCharacter::ApplySevered(ETHLimb Limb)
 	}
 	Piece->SetLifeSpan(SeveredPieceLifeSpan);
 	SeveredPieces.Add(Piece);
+	SettlePiece(Fallen);
+}
+
+void ATHEnemyCharacter::SettlePiece(USkeletalMeshComponent* Fallen)
+{
+	// Damped as it tumbles, then put to sleep where it lies once (nearly) still: balanced on its end a piece otherwise spun on
+	// the spot until it went (developer, 2026-11-17: a leg stood on its foot and spun)
+	for (FBodyInstance* Each : Fallen->Bodies)
+	{
+		if (Each)
+		{
+			Each->LinearDamping = SeveredPieceLinearDamping;
+			Each->AngularDamping = SeveredPieceAngularDamping;
+			Each->UpdateDampingProperties();
+		}
+	}
+	struct FSettle
+	{
+		FTimerHandle Handle;
+		float Age = 0.0f;
+		float Still = 0.0f;
+	};
+	const TSharedRef<FSettle> Settle = MakeShared<FSettle>();
+	constexpr float Interval = 0.25f;
+	const float After = SeveredPieceSettleTime;
+	const float RestSpeed = SeveredPieceRestSpeed;
+	const TWeakObjectPtr<ATHEnemyCharacter> Self(this);
+	GetWorldTimerManager().SetTimer(Settle->Handle, FTimerDelegate::CreateWeakLambda(Fallen, [Fallen, Settle, Interval, After, RestSpeed, Self]()
+	{
+		Settle->Age += Interval;
+		float Fastest = 0.0f;
+		for (const FBodyInstance* Each : Fallen->Bodies)
+		{
+			if (Each && Each->IsInstanceSimulatingPhysics())
+			{
+				Fastest = FMath::Max(Fastest, static_cast<float>(Each->GetUnrealWorldVelocity().Size()));
+			}
+		}
+		Settle->Still = Fastest < RestSpeed ? Settle->Still + Interval : 0.0f;
+		if (Settle->Age < After || (Settle->Still < 0.5f && Settle->Age < After * 3.0f))
+		{
+			return;
+		}
+		// Asleep, and slow to wake spinning: heavy damping if a player kicks it
+		for (FBodyInstance* Each : Fallen->Bodies)
+		{
+			if (Each)
+			{
+				Each->AngularDamping = FMath::Max(Each->AngularDamping, 20.0f);
+				Each->UpdateDampingProperties();
+			}
+		}
+		Fallen->PutAllRigidBodiesToSleep();
+		if (ATHEnemyCharacter* Enemy = Self.Get())
+		{
+			++Enemy->SettledPieceCount;
+		}
+		if (UWorld* World = Fallen->GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(Settle->Handle);
+		}
+	}), Interval, true);
 }
 
 void ATHEnemyCharacter::CollapseLimb(USkeletalMeshComponent* Body, FName Top)
@@ -1004,16 +1069,34 @@ void ATHEnemyCharacter::CollapseSeveredBones()
 	{
 		return;
 	}
+	const USkeletalMesh* Asset = Body->GetSkeletalMeshAsset();
+	if (!Asset)
+	{
+		return;
+	}
 	// The pose just finalized, the one that gets drawn (and that the clothes, following this body, are drawn with). Each limb
-	// bone at its top bone's joint, scaled to nothing: the limb's skin shrinks into the stump (the top keeps its place, so the
-	// order doesn't matter)
+	// bone at its top bone's joint, scaled to nothing: the limb's skin shrinks into the stump. The joint is placed from the
+	// parent (pelvis, clavicle, neck) and the skeleton's own offset to it, not from the top bone itself: once a ragdoll's
+	// limb bodies are gone its bones' own pose is meaningless, and a dead Priest's cut leg stretched 20 m (developer,
+	// 2026-11-16: lines several feet long)
 	TArray<FTransform>& Pose = const_cast<TArray<FTransform>&>(Body->GetComponentSpaceTransforms());
+	const FReferenceSkeleton& Bones = Asset->GetRefSkeleton();
+	const TArray<FTransform>& Reference = Bones.GetRefBonePose();
+	int32 Top = INDEX_NONE;
+	FTransform Joint = FTransform::Identity;
 	for (const TPair<int32, int32>& Each : CollapsedBones)
 	{
-		if (Pose.IsValidIndex(Each.Key) && Pose.IsValidIndex(Each.Value))
+		if (Each.Value != Top)
 		{
-			const FTransform Joint = Pose[Each.Value];
-			Pose[Each.Key] = FTransform(Joint.GetRotation(), Joint.GetTranslation(), FVector::ZeroVector);
+			Top = Each.Value;
+			const int32 Parent = Bones.GetParentIndex(Top);
+			Joint = Pose.IsValidIndex(Parent) && Reference.IsValidIndex(Top) ? Reference[Top] * Pose[Parent]
+				: Pose.IsValidIndex(Top) ? Pose[Top] : FTransform::Identity;
+			Joint.SetScale3D(FVector::ZeroVector);
+		}
+		if (Pose.IsValidIndex(Each.Key))
+		{
+			Pose[Each.Key] = Joint;
 		}
 	}
 }
@@ -1138,8 +1221,24 @@ void ATHEnemyCharacter::WallCrash(const FVector& Point, const FVector& Normal)
 	++WallCrashCount;
 	const TArray<TObjectPtr<USoundBase>>& Sounds = Behavior->WallCrashSounds;
 	USoundBase* Sound = Sounds.Num() > 0 ? Sounds[FMath::RandRange(0, Sounds.Num() - 1)].Get() : nullptr;
-	MulticastWallCrash(Point, Normal, Behavior->WallCrashEffect, Sound, Behavior->WallCrashShakeRadius, Behavior->WallCrashShake,
-		Behavior->WallCrashEffectTime, Behavior->WallCrashEffectScale);
+	MulticastWallCrash(Point, Normal, Behavior, Sound, Behavior->WallCrashShakeRadius, Behavior->WallCrashShake);
+}
+
+void ATHEnemyCharacter::MoveBlockedBy(const FHitResult& Impact)
+{
+	Super::MoveBlockedBy(Impact);
+	LastBlock = Impact;
+	LastBlockTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+bool ATHEnemyCharacter::GetBlockSince(double Since, FHitResult& OutHit) const
+{
+	if (LastBlockTime < Since)
+	{
+		return false;
+	}
+	OutHit = LastBlock;
+	return true;
 }
 
 void ATHEnemyCharacter::PlayCrashAt(const FVector& Point, const FVector& Normal, USoundBase* Sound)
@@ -1150,22 +1249,28 @@ void ATHEnemyCharacter::PlayCrashAt(const FVector& Point, const FVector& Normal,
 	}
 }
 
-void ATHEnemyCharacter::MulticastWallCrash_Implementation(FVector_NetQuantize Point, FVector_NetQuantizeNormal Normal, UNiagaraSystem* Effect,
-	USoundBase* Sound, float ShakeRadius, float Shake, float EffectTime, float EffectScale)
+void ATHEnemyCharacter::MulticastWallCrash_Implementation(FVector_NetQuantize Point, FVector_NetQuantizeNormal Normal, const UTHEnemyBehavior* Effect,
+	USoundBase* Sound, float ShakeRadius, float Shake)
 {
 	if (GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
-	if (Effect)
+	if (Effect && Effect->WallCrashEffect)
 	{
-		UNiagaraComponent* Puff = UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, Effect, Point, FVector(Normal).Rotation(),
-			FVector(FMath::Max(EffectScale, 0.01f)));
-		// A looping effect: it stops spawning after EffectTime and goes once its particles are gone
-		if (Puff && EffectTime > 0.0f)
+		// Counted as asked for: without rendering (tests run -nullrhi) Niagara may make no component
+		++WallCrashEffectCount;
+		UNiagaraComponent* Puff = UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, Effect->WallCrashEffect, Point, FVector(Normal).Rotation(),
+			FVector(FMath::Max(Effect->WallCrashEffectScale, 0.01f)), true, false, ENCPoolMethod::None, false);
+		if (Puff)
 		{
-			FTimerHandle Stop;
-			GetWorldTimerManager().SetTimer(Stop, FTimerDelegate::CreateWeakLambda(Puff, [Puff]() { Puff->Deactivate(); }), EffectTime, false);
+			Puff->Activate();
+			// A looping effect: it stops spawning after the effect time and goes once its particles are gone
+			if (Effect->WallCrashEffectTime > 0.0f)
+			{
+				FTimerHandle Stop;
+				GetWorldTimerManager().SetTimer(Stop, FTimerDelegate::CreateWeakLambda(Puff, [Puff]() { Puff->Deactivate(); }), Effect->WallCrashEffectTime, false);
+			}
 		}
 	}
 	if (Sound)
@@ -1336,7 +1441,11 @@ void ATHEnemyCharacter::MulticastVoice_Implementation(USoundBase* Sound, USoundA
 		return;
 	}
 	// From about the head, following the body as it moves
-	UGameplayStatics::SpawnSoundAttached(Sound, GetRootComponent(), NAME_None, FVector(0.0f, 0.0f, 70.0f),
+	if (UAudioComponent* Old = VoiceAudio.Get())
+	{
+		Old->FadeOut(0.1f, 0.0f);
+	}
+	VoiceAudio = UGameplayStatics::SpawnSoundAttached(Sound, GetRootComponent(), NAME_None, FVector(0.0f, 0.0f, 70.0f),
 		EAttachLocation::KeepRelativeOffset, true, Volume, VoicePitch, 0.0f, Attenuation);
 }
 
@@ -1372,6 +1481,13 @@ void ATHEnemyCharacter::ApplyDeath(bool bAsItHappens)
 	{
 		return;
 	}
+	// Its voice stops with it (a scream or a growl went on from the corpse: developer, 2026-11-17)
+	if (UAudioComponent* Voice = VoiceAudio.Get())
+	{
+		Voice->FadeOut(0.15f, 0.0f);
+	}
+	VoiceAudio.Reset();
+	VoiceBusyUntil = -1.0e9;
 	BecomeRagdoll();
 	if (bAsItHappens)
 	{

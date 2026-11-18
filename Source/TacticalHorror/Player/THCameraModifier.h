@@ -6,8 +6,8 @@
 
 /**
  * The local player's view reacting to their body: a jolt when hit (AddHit), and falling to the floor and rolling onto
- * its side when they die. Added by ATHPlayerController to its camera manager. Works on the final view, so it doesn't
- * care how the template's camera is attached.
+ * its side when they die, and the edges darkening as their sanity runs out. Added by ATHPlayerController to its
+ * camera manager. Works on the final view, so it doesn't care how the template's camera is attached.
  */
 UCLASS()
 class TACTICALHORROR_API UTHCameraModifier : public UCameraModifier
@@ -19,6 +19,8 @@ public:
 	void AddHit(float Strength);
 
 	virtual bool ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutPOV) override;
+	/** Low sanity: the edges of the view darken (UTHSanityComponent). */
+	virtual void ModifyPostProcess(float DeltaTime, float& PostProcessBlendWeight, FPostProcessSettings& PostProcessSettings) override;
 
 	/** Jolt at strength 1: degrees of roll / pitch, and how long it lasts. */
 	UPROPERTY(EditAnywhere, Category = "Hit")

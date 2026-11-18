@@ -27,7 +27,7 @@ namespace
 		return FMath::Max(0.0f, 1.0f - FMath::Abs(FRotator::NormalizeAxis(Direction - Center)) / 90.0f);
 	}
 
-	float WrapTime(float Time, const UAnimSequence* Anim)
+	float WrapBodyTime(float Time, const UAnimSequence* Anim)
 	{
 		const float Length = Anim->GetPlayLength();
 		return Length > UE_KINDA_SMALL_NUMBER ? FMath::Fmod(Time, Length) : 0.0f;
@@ -920,11 +920,11 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		}
 		if (Idle)
 		{
-			AddLeg(Idle, WrapTime(IdleTime, Idle), Share.Weight * Ground * (1.0f - MoveAlpha) * (1.0f - CrouchAlpha), bIdleFromHeld);
+			AddLeg(Idle, WrapBodyTime(IdleTime, Idle), Share.Weight * Ground * (1.0f - MoveAlpha) * (1.0f - CrouchAlpha), bIdleFromHeld);
 		}
 		if (CrouchIdle)
 		{
-			AddLeg(CrouchIdle, WrapTime(IdleTime, CrouchIdle), Share.Weight * Ground * (1.0f - MoveAlpha) * CrouchAlpha, bCrouchIdleFromHeld);
+			AddLeg(CrouchIdle, WrapBodyTime(IdleTime, CrouchIdle), Share.Weight * Ground * (1.0f - MoveAlpha) * CrouchAlpha, bCrouchIdleFromHeld);
 		}
 	}
 
@@ -1003,7 +1003,7 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	if (Falling)
 	{
-		AddLeg(Falling, WrapTime(IdleTime, Falling), FallAlpha, bFallFromHeld);
+		AddLeg(Falling, WrapBodyTime(IdleTime, Falling), FallAlpha, bFallFromHeld);
 	}
 
 	// Upper body: the held pose covers whatever share of the legs came from another set
@@ -1018,7 +1018,7 @@ void UTHBodyAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		const float LayerWeight = 1.0f - HeldWeight / TotalWeight;
 		if (LayerWeight > 0.001f)
 		{
-			NewSnapshot.UpperBody = { LayerSet->UpperBodyPose, WrapTime(IdleTime, LayerSet->UpperBodyPose), LayerWeight, true };
+			NewSnapshot.UpperBody = { LayerSet->UpperBodyPose, WrapBodyTime(IdleTime, LayerSet->UpperBodyPose), LayerWeight, true };
 		}
 	}
 	if (PoseSet->AimOffset)

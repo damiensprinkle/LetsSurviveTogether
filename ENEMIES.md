@@ -169,9 +169,10 @@ with nothing to go on for Memory Time, it waits again where it is. Dies to one h
 A rare, heavily mutated enemy (always a mutant body: `DA_MutantLooks`, Bugrimov Maksim's five creatures). Spotting a
 player at least Charge Min Distance away, with a clear straight run to them (nothing its width in the way; else it
 comes round first), it stops and **roars** (the warning, with three heavy **stomps**), then **charges** in a nearly straight
-line, very fast; it runs **dead straight** at where you were when it set off (developer, 2026-11-13: it tracked a sidestep). It **bursts through** unlocked doors (**slammed** open, swinging 7x as fast, as it comes, so it doesn't run into a half-open door; developer 2026-11-13; a locked door stops it with a crash) and **knocks loose props aside** (a door it slams open: its own door slam and a jolt, 2026-11-14). Its running steps are heavy **stomps** of its own (`DA_MutantLooks` → Footstep Sounds, whatever the floor; 2026-11-14) at Footstep Volume 0.3 (developer, 2026-11-15 and 16: too loud), each as a foot lands (2026-11-16: they didn't line up), cut to 0.5 s so they don't run together; fixed scenery (the test map's crates, walls) still crashes it. Shot in the leg, it slows. So a sidestep makes it miss. A **hit** does Charge Damage (a kill), then it recovers
-briefly and fights up close like a hunter. A **miss** (sidestepped, a wall, too far) sends it **sprawling**: it falls,
-stays down, then struggles back up, about 14 s in all, time to run or to shoot it. A wall square ahead (within Wall
+line, very fast; it runs **dead straight** at where you were when it set off (developer, 2026-11-13: it tracked a sidestep). It **bursts through** unlocked doors (**slammed** open, swinging 7x as fast, as it comes, so it doesn't run into a half-open door; developer 2026-11-13; a locked door stops it with a crash) and **knocks loose props aside** (a door it slams open: its own door slam and a jolt, 2026-11-14). Its running steps are heavy **stomps** of its own (`DA_MutantLooks` → Footstep Sounds, whatever the floor; 2026-11-14) at Footstep Volume 0.3 (developer, 2026-11-15 and 16: too loud) and Footstep Pitch 1.3 (too deep: it sounded heavier than it looks), each as a foot lands (2026-11-16: they didn't line up), cut to 0.5 s so they don't run together; fixed scenery (the test map's crates, walls) still crashes it. Shot in the leg, it slows. So a sidestep makes it miss. A **hit** does Charge Damage (a kill), then it recovers
+briefly and fights up close like a hunter. A **miss** (sidestepped: 1.5 m past you, or 25 m run) doesn't stun it
+(developer, 2026-11-17): it pulls up for Charge Miss Recover Time and comes back at you. A **wall** stuns it: dizzy on
+its feet, then a roar shaking it off, about 6 s, time to run or to shoot it. A wall square ahead (within Wall
 Crash Reach) is a **crash** at full tilt, not a slide along it: a heavy thud (one of four), and it **shakes the view** of
 players within 15 m (more the closer). Growls now and then.
 
@@ -188,13 +189,15 @@ players within 15 m (more the closer). Growls now and then.
 | Limb Health / Limp Speed Scale | 150 / 0.75 | A leg shot for 75 or more slows it to 75% (charge too); a mutant's limbs never come off (no pieces) |
 | Charge Max Distance | 2500 cm | A charge this long is a miss |
 | Charge Damage | 100 | Kills a player at full health (in co-op with a teammate up, that downs them) |
-| Stumble Down Time | 4 s | Stunned on its feet after a miss or a crash, dizzy (Mixamo Dizzy Idle) (plus a 1 s recoil and a 1.3 s roar shaking it off; it used to fall and crawl: developer, 2026-11-16) |
+| Stumble Down Time | 4 s | Stunned on its feet after a wall crash, dizzy (Mixamo Dizzy Idle) (plus a 1 s recoil and a 1.3 s roar shaking it off; it used to fall and crawl: developer, 2026-11-16) |
 | Charge Recover Time | 1.5 s | Standing after a hit |
-| Wall Crash Effect / Time / Scale | NS_Wind_Dust_Specs_01 / 0.4 s / 0.6 | Vefects' Wind VFX dust specks (2026-11-16, `setup_charger_dust.py`): a looping effect, spawned for Effect Time then left to drift out, a puff. Time 0 for a one-shot effect |
+| Charge Miss Recover Time | 0.6 s | After a miss: pulling up before it fights on; no stun (developer, 2026-11-17) |
+| Wall Crash Effect / Time / Scale | NS_ChargerWallDust / 0 / 1 | A puff of dust out of the wall, the developer's own (`/Game/Enemies/Effects`, 2026-11-17; Vefects' wind dust before it couldn't be seen). Time: how long a looping effect spawns (0 for a one-shot) |
 | Wall Crash Sounds | 4 | Door smacks and war club blows from the Sound Effects bundle (`import_charger_crash.py`), one at random |
 | Wall Crash Reach | 40 cm | A wall this close in front (square on) is a crash |
+| Wall Crash Min Angle | 15° | Its body stopped by a wall met at least this far off parallel is a crash too; shallower, a graze, it slides along (developer, 2026-11-17: at a slant it just stopped) |
 | Wall Crash Shake Radius / Shake | 1500 cm / 1.2 (was 0.8) | View shake for players near a wall crash (1 = a heavy blow's jolt) |
-| Run Speed / Attack Damage | 300 cm/s / 60 | Up close |
+| Run Speed / Attack Damage | 180 cm/s / 60 | Up close; slower than a walking player (260) so you can open the distance it needs to charge again (was 300: it kept up; developer, 2026-11-17) |
 | Wander Radius | 400 cm | |
 | Alert / Idle Sounds | 4 roars / 4 growls | MonsterRoarsAndGrowls |
 | Appearance | `DA_MutantLooks` | A behaviour's own looks replace the enemy's |

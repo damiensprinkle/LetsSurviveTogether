@@ -15,6 +15,8 @@ AI-made content that is currently in the game. Move a row to *Replaced* when you
 | Settings panel "Leave Game" button | Placeholder label | `UTHAudioSettingsWidget` (in game only) | `LOCTEXT` in `THAudioSettingsWidget.cpp`, or the panel's Widget Blueprint |
 | Settings panel crosshair text and look: "Settings", "Crosshair", "Style", "<", ">", "{0} / {1}", "Size", "Red", "Green", "Blue" (and the grey preview square) | Placeholder labels for the crosshair section | `UTHAudioSettingsWidget` (the settings panel) | Edit the `LOCTEXT` strings in `THAudioSettingsWidget.cpp`, or replace the panel with a Widget Blueprint (`AudioSettingsWidgetClass` on the player controller) |
 | Audio settings menu text: "Audio", "Master", "Gunplay", "Close" | Placeholder labels and the panel's look (dark box, sliders, percentages) | `UTHAudioSettingsWidget` (Escape / P in game) | Edit the `LOCTEXT` strings in `Source/TacticalHorror/UI/THAudioSettingsWidget.cpp`, or make a Widget Blueprint and set it as `AudioSettingsWidgetClass` on the player controller |
+| Settings panel "3D Audio (headphones)" toggle label (2026-11-16) | Placeholder label for the binaural on/off checkbox | `UTHAudioSettingsWidget`, Audio section | `LOCTEXT("SpatialAudio", ...)` in `THAudioSettingsWidget.cpp` |
+| Settings panel "Display" section title and "Blood" toggle label (2026-11-17) | Placeholder labels for the blood on/off checkbox | `UTHAudioSettingsWidget`, Display section | `LOCTEXT("DisplaySection", ...)`, `LOCTEXT("Blood", ...)` in `THAudioSettingsWidget.cpp` |
 
 Replacing a texture: save over its source PNG in `SourceArt/`, then in the editor right-click the texture → **Reimport** (Unreal only watches `Content/`, not `SourceArt/`).
 

@@ -55,9 +55,21 @@ void UTHFootstepComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 	}
 
 	const bool bLanded = UpdateFeet(DeltaTime);
+	// Only a landing that plays a step is timed (a foot set down slowly in a roar or as it stops plays none)
+	auto ForgetSilentLandings = [this]()
+	{
+		for (FFoot& Foot : TrackedFeet)
+		{
+			if (Foot.SinceLanded == 0.0f)
+			{
+				Foot.SinceLanded = -1.0f;
+			}
+		}
+	};
 	const float Speed = Velocity.Size2D();
 	if (!Movement->IsMovingOnGround() || Speed < MinStepSpeed)
 	{
+		ForgetSilentLandings();
 		// Standing still: the next step lands soon after moving again, not a full stride later
 		DistanceSinceStep = FMath::Max(DistanceSinceStep, StrideRange.X * 0.5f);
 		return;
@@ -68,6 +80,10 @@ void UTHFootstepComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 	// By the feet: as one lands (not twice in a blink), or a shuffle's step once well past a stride; else every stride
 	const bool bByFeet = !TrackedFeet.IsEmpty();
 	const bool bFootStep = bByFeet && bLanded && GetWorld()->GetTimeSeconds() - LastStepTime >= 0.15;
+	if (!bFootStep)
+	{
+		ForgetSilentLandings();
+	}
 	if (bFootStep || DistanceSinceStep >= (bByFeet ? Stride * 1.5f : Stride))
 	{
 		DistanceSinceStep = 0.0f;
@@ -80,8 +96,13 @@ void UTHFootstepComponent::SetFootMesh(USkeletalMeshComponent* Mesh)
 {
 	FootMesh = Mesh;
 	TrackedFeet.Reset();
-	for (const FName& Bone : FootBones)
+	for (int32 Index = 0; Index < FootBones.Num(); ++Index)
 	{
+		FName Bone = FootBones[Index];
+		if (Mesh && Mesh->GetBoneIndex(Bone) == INDEX_NONE && FallbackFootBones.IsValidIndex(Index))
+		{
+			Bone = FallbackFootBones[Index];
+		}
 		if (Mesh && Mesh->GetBoneIndex(Bone) != INDEX_NONE)
 		{
 			TrackedFeet.Add({ Bone });
@@ -102,9 +123,32 @@ bool UTHFootstepComponent::UpdateFeet(float DeltaTime)
 	for (FFoot& Foot : TrackedFeet)
 	{
 		const float Height = Mesh->GetSocketLocation(Foot.Bone).Z - Bottom;
-		// The lowest lately, creeping up 20 cm a second (a step up, a slope) so it follows the floor
-		Foot.Floor = Foot.bHasFloor ? FMath::Min(Height, Foot.Floor + 20.0f * DeltaTime) : Height;
+		// The lowest lately, creeping up 20 cm a second while the foot is down (a step up, a slope) so it follows the
+		// floor; hardly at all while it is up, or the floor rose to meet a foot coming down and it landed early
+		const float Creep = Foot.bLifted ? 2.0f : 20.0f;
+		Foot.Floor = Foot.bHasFloor ? FMath::Min(Height, Foot.Floor + Creep * DeltaTime) : Height;
 		Foot.bHasFloor = true;
+		if (Foot.SinceLanded >= 0.0f)
+		{
+			Foot.SinceLanded += DeltaTime;
+			// Still clearly going down (not the last centimetre of settling)
+			if (Height < Foot.Lowest - 1.5f)
+			{
+				Foot.Lowest = Height;
+				Foot.LowestAt = Foot.SinceLanded;
+				LatestLowAfterLanding = FMath::Max(LatestLowAfterLanding, Foot.SinceLanded);
+			}
+			if (Foot.SinceLanded > 0.4f || Height > Foot.Floor + FootLiftHeight)
+			{
+				Foot.SinceLanded = -1.0f;
+				RecentLandings.Add(FString::Printf(TEXT("%s +%.1f cm over floor, then down %.1f cm by %.3f s"), *Foot.Bone.ToString(),
+					Foot.LandedOverFloor, Foot.LandedHeight - Foot.Lowest, Foot.LowestAt));
+				if (RecentLandings.Num() > 12)
+				{
+					RecentLandings.RemoveAt(0);
+				}
+			}
+		}
 		if (Height > Foot.Floor + FootLiftHeight)
 		{
 			Foot.bLifted = true;
@@ -112,6 +156,11 @@ bool UTHFootstepComponent::UpdateFeet(float DeltaTime)
 		else if (Foot.bLifted && Height <= Foot.Floor + FootPlantHeight)
 		{
 			Foot.bLifted = false;
+			Foot.Lowest = Height;
+			Foot.LandedHeight = Height;
+			Foot.LandedOverFloor = Height - Foot.Floor;
+			Foot.LowestAt = 0.0f;
+			Foot.SinceLanded = 0.0f;
 			bLanded = true;
 		}
 	}
@@ -182,10 +231,10 @@ void UTHFootstepComponent::PlayStep(EStep Kind)
 	const float Volume = (Kind == EStep::Crouch ? CrouchVolume : Kind == EStep::Quiet ? QuietVolume : 1.0f) * (bOverride ? StepOverrideVolume : 1.0f);
 	if (Owner->IsLocallyControlled())
 	{
-		UGameplayStatics::PlaySound2D(this, Sound, LocalVolume * Volume);
+		UGameplayStatics::PlaySound2D(this, Sound, LocalVolume * Volume, bOverride ? StepOverridePitch : 1.0f);
 	}
 	else
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, Sound, Feet, Volume, 1.0f, 0.0f, Attenuation);
+		UGameplayStatics::PlaySoundAtLocation(this, Sound, Feet, Volume, bOverride ? StepOverridePitch : 1.0f, 0.0f, Attenuation);
 	}
 }

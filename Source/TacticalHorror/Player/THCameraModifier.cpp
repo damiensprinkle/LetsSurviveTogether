@@ -1,5 +1,6 @@
 #include "Player/THCameraModifier.h"
 #include "Player/Components/THHealthComponent.h"
+#include "Player/Components/THSanityComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -72,4 +73,18 @@ bool UTHCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutPOV
 		InOutPOV.Rotation.Yaw += HitRoll * 0.4f * HitStrength * Fade * FMath::Sin((HitTime + HitSeed) * 27.0f);
 	}
 	return false;
+}
+
+void UTHCameraModifier::ModifyPostProcess(float DeltaTime, float& PostProcessBlendWeight, FPostProcessSettings& PostProcessSettings)
+{
+	Super::ModifyPostProcess(DeltaTime, PostProcessBlendWeight, PostProcessSettings);
+	const APlayerController* PC = CameraOwner ? CameraOwner->GetOwningPlayerController() : nullptr;
+	const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+	const UTHSanityComponent* Sanity = Pawn ? Pawn->FindComponentByClass<UTHSanityComponent>() : nullptr;
+	if (Sanity && Sanity->GetBlackoutWeight() > 0.0f)
+	{
+		PostProcessBlendWeight = Sanity->GetBlackoutWeight();
+		PostProcessSettings.bOverride_VignetteIntensity = true;
+		PostProcessSettings.VignetteIntensity = Sanity->GetBlackoutVignette();
+	}
 }

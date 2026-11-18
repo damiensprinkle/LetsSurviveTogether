@@ -54,7 +54,9 @@ BEHAVIORS = [
     ('DA_Stalker', 'STALKER', {'run_speed': 300.0, 'retreat_speed': 330.0, 'attack_damage': 60.0, 'sight_half_angle': 80.0}),
     ('DA_Ambusher', 'AMBUSHER', {'run_speed': 380.0, 'attack_damage': 45.0, 'sight_half_angle': 90.0, 'wander_radius': 0.0, 'health': 90.0}),
     # A rare, heavily mutated enemy (developer, 2026-11-12): roars, charges (a hit kills), stumbles for a long while on a miss
-    ('DA_Charger', 'CHARGER', {'health': 400.0, 'run_speed': 300.0, 'attack_damage': 60.0, 'wander_radius': 400.0,
+    # Run speed 180, slower than a walking player (260): at 300 it kept up, so you could never open the distance it needs
+    # to charge again (developer, 2026-11-17)
+    ('DA_Charger', 'CHARGER', {'health': 400.0, 'run_speed': 180.0, 'attack_damage': 60.0, 'wander_radius': 400.0,
                                'charge_speed': 620.0, 'charge_damage': 100.0}),
     # Barely turned, still looks like a person (developer, 2026-11-12): lies calling for help, turns on whoever comes close
     ('DA_Siren', 'SIREN', {'health': 120.0, 'run_speed': 300.0, 'walk_speed': 140.0, 'attack_damage': 55.0, 'wander_radius': 0.0,

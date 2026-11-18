@@ -69,6 +69,67 @@ Enemies matter as much as the gunplay: stale enemies make a stale game. Sounds, 
 - **MetaHumans added; duplicate YI zombie folder removed** (2026-11-13, developer). The developer assembled downloaded MetaHumans (MHC_*): Advika and Hannah had assembled into /Game/EditableCharacters and /Game/EditableMetahumans (each character asset's own output folder); moved into /Game/MetaHumans and the empty folders deleted; `setup_metahumans.py` re-run: DA_MetaHumanLooks has 4 looks (neither new one has an outfit). **Still to do (developer):** assemble MHC_Skotukeda (output folder /Game/MetaHumans, Optimized, Medium, Joints Only), then re-run `setup_metahumans.py`; set Advika's and Hannah's character assets' output folder to /Game/MetaHumans before any re-assembly; the .mhpkg downloads in Content/Characters/MetaHuman (550 MB) can live outside Content. The top-level Content/YI_ModularZombies (a second copy from the M02/F02 install, which the ThirdParty F02/M02 assets still used for their skeleton and master materials) was merged into ThirdParty (76 assets consolidated onto their twins, 136 referencers re-saved) and removed; backup in ../Backups/LetsSurviveTogether_2026-11-13 (THIRD_PARTY_ASSETS.csv). Merging Blueprints that way crashes the editor, so the pack's demo Blueprints and maps still point at the removed folder (unused).
 - **Ambushers lying or standing; more zombie bodies** (2026-11-14, developer; ENEMIES.md, TECHNICAL_ARCHITECTURE.md, ENEMY_ASSETS_TODO.md, Scripts/Tools/README.md). A placed enemy's **Wait Pose** (Details panel: As Behaviour / Lying / Standing; or an actor tag `Lying` / `Standing`) sets how it waits; otherwise DA_Ambusher's Lies Down Chance (60%) picks, so Director packs mix. The Priest (M09, own limb pieces) joined the zombies; Hazmat, Police and Construction (no limb pieces) only on ambushers (`DA_AmbusherLooks`). Test: `Functional.EnemyBehaviors` (one ambusher set Lying lies, one set Standing stands head down). **To check in play:** the Priest losing limbs (its pieces fall with M02's physics), the new bodies on ambushers.
 - **Enemy sounds and animations from the developer's downloads; slower flicker** (2026-11-14, developer; ENEMY_ASSETS_TODO.md, ENEMIES.md, TECHNICAL_ARCHITECTURE.md, Scripts/Tools/README.md, THIRD_PARTY_ASSETS.csv). Sounds (`../NpcAudios`, freesound.org; `import_npc_audio.py`): ambusher shriek (only the one that springs first), hunter scream (calling others in), door bangs, charger door slam, charger stomps (the mp3 sequence cut into four; the mutant look's own footsteps), gore for a limb and a head, a crackle as the flicker dips. Two are CC BY 4.0 (the shriek, the stomps): **they need the credits screen**. The stalker lures with footsteps only (no voice); the charger keeps its stomps (no floor scrape). Animations (Mixamo, `import_mixamo.py`, which now imports only new files): zombies flinch with two Mixamo zombie hits; a legless zombie crawls with Mixamo's Zombie Crawl (83 cm/s, held in place: `WalkTravel`); ambushers lie face down and spring up with Stand Up (0.9 s); the siren waits standing (Terrified, waving) or sitting (Sitting Dazed), never lying, and plays dead on its back (a pose kept for that). Flicker: steady 0.6-1.6 s, then a 0.12-0.35 s dip (was a change every 0.04-0.18 s). **To check in play:** the flicker pace and crackle, the zombie flinches, the crawl, an ambusher pack springing (one shriek), a sitting siren getting up (it blends, no clip), the charger's stomps and door slam, the scream's length (5.7 s) and the shriek's (6.4 s).
+- **Stretched corpses, the charger's pitch; Steam Audio waiting** (2026-11-16, developer; ENEMY_PLAYTESTS.md first
+  section, DEVELOPER_TODO.md). A dead body's cut limb stretched metres (its bones have no meaningful pose once its
+  ragdoll bodies are gone, and the stump was collapsed onto them): the stump is now placed from the parent bone and the
+  reference offset (`ATHEnemyCharacter::CollapseSeveredBones`). Test: `Functional.EnemyBehaviors`, a Priest's skin
+  skinned on the CPU (`FarthestVertex`) alive, crawling, dead and cut as a corpse. The charger's stomps at Footstep
+  Pitch 1.3 (new, `UTHEnemyAppearance`). Two helpers renamed (`MakeStatusText`, `WrapBodyTime`): the unity build
+  clashed once the files were committed.
+- **Dropped magazine in front of the eyes when crouched** (2026-11-18, developer): the magazine a reload drops falls from the third-person gun copy, which crouched sits just under the first-person eyes. It is now hidden from the one reloading until it lands (or 1 s); others see it fall as before. `ATHDroppedMagazine`; test: `Functional.Weapons`.
+- **Sanity** (2026-11-17, developer; GDD 7.2, TECHNICAL_ARCHITECTURE.md *Sanity*, Scripts/Tools/README.md
+  `setup_sanity.py`): per player, worked out on the server, its effects only on that player's machine. Developer's
+  rules: drains in the dark (a lamp, not your flashlight, counts as light; your own light halves the drain) and alone
+  (never solo); back in lit rooms, near a teammate, and when calm; shown by a heartbeat only (no item); hallucinations
+  are sounds (fake footsteps coming closer, the enemies' own sounds from behind or around); at 0 a fake zombie rushes
+  you and vanishes, and **dissolves in a puff when shot** (the developer's charger dust as a placeholder). Also a
+  wandering aim from 50 down (GDD's shakier aim). Tuning in `DA_Sanity`. Console: `Sanity <n>`, `Hallucinate <name>`,
+  `th.SanityDebug 1`. Test: `Functional.Sanity`. New: `UTHLightingSubsystem::GetLampLightOn` / `HasOwnLightOn`,
+  `ATHWeaponBase::OnLocalShot`. **To check in play:** DEVELOPER_TODO.md *Sanity*. Not done: an in-world item,
+  visual hallucinations other than the fake enemy, enemies as a drain.
+  First play fixes (developer): the fake enemy ran sideways (its mesh was the root, so the -90° turn was lost; now
+  under a scene root, and the test checks it faces you); phantom footsteps weren't heard (placed at random, often
+  behind a wall or under the floor where occlusion muted them; now in open space along a clear line from your head,
+  on the floor, nearer (3.5–7 m) and louder (x2; running x1.6, 6–11 m)).
+  Blackout (developer): below 40 the edges of the view darken, as if about to pass out, pulsing with each heartbeat
+  (vignette from the camera modifier; `DA_Sanity` → Blackout).
+- **Blood on / off setting** (2026-11-17, developer; TECHNICAL_ARCHITECTURE.md *Blood*): Settings → Display → Blood,
+  per player (`UTHDisplaySettingsSubsystem`). Off: no spray or wall splatter from shots on flesh (a surface's new Is
+  Blood flag, set on Flesh in `DA_ImpactSurfaces`), no spray as a limb comes off, no blood on the screen when hit; the
+  sounds, the jolt and the dismemberment stay. Tests: `Functional.EnemyHit` (wall splatter on / off),
+  `Functional.EnemyBehaviors` (screen blood off). Also: the hit-confirm sounds counted as done (developer), Steam Audio
+  kept, and the editor crash traced to the ClassicClogs MetaHuman outfit, saved by a newer Unreal (DEVELOPER_TODO.md).
+- **No camera rotation lag** (2026-11-17, developer): the view glided after a flick and a quick flick hardly turned
+  it, because `BP_FirstPersonCharacter`'s `SpringArm` (lag speed 6) and `CameraSmooth` (10) had Enable Camera Rotation
+  Lag on, so the view trailed the aim. Both are off now; the gun's own sway is the only softness left.
+- **Charger dust, slower charger, a dead enemy's voice stops** (2026-11-17, developer; ENEMIES.md, ENEMY_PLAYTESTS.md,
+  ENEMY_ASSETS_TODO.md). The developer's own `NS_ChargerWallDust` / `M_Dust` on `DA_Charger` → Wall Crash Effect. The
+  charger's Run Speed 180 (was 300, faster than a walking player: no room to charge again; `setup_enemies.py`). An
+  enemy's voice is kept (`VoiceAudio`) and faded out as it dies (a scream went on from the corpse). A charge whose body
+  is stopped by a wall at least Wall Crash Min Angle (15°, new) off parallel crashes (`ATHEnemyCharacter::MoveBlockedBy`
+  keeps the movement's blocking hit; a wall at a slant used to end as a miss). Tests: `Functional.EnemyBehaviors`
+  (a 20° wall crashes it), `Functional.EnemyLineup` (dead enemies silent). The step-timing check now times only landings
+  that played a step (`UTHFootstepComponent`): a foot set down slowly in the roar or the pull-up, with no sound, failed
+  it now and then.
+- **A miss doesn't stun the charger; no crash dust; fallen limbs settle** (2026-11-17, developer; ENEMIES.md,
+  ENEMY_PLAYTESTS.md, ENEMY_ASSETS_TODO.md). A charge that misses (sidestepped, 1.5 m past, stalled, too far) pulls up
+  for `DA_Charger` → Charge Miss Recover Time (0.6 s, new) and fights on; only a wall crash stuns it
+  (`EndCharge(EChargeEnd)`). The wind dust is gone from the wall crash (it couldn't be seen): `DA_Charger` → Wall Crash
+  Effect empty, the per-effect parameter list and `setup_charger_dust.py` removed; a real impact effect is a to-do
+  (ENEMY_ASSETS_TODO.md). A severed piece is damped as it tumbles and put to sleep once still (or 4.5 s on, whatever it
+  does): a leg stood on its foot and spun (`ATHEnemyCharacter::SettlePiece`, Severed Piece Angular / Linear Damping,
+  Settle Time, Rest Speed, new). Tests: `Functional.EnemyBehaviors` (no stun after a miss and back after it in 2 s; the
+  pieces settled 5 s on).
+- **Charger stomps on time, higher** (2026-11-16, developer; ENEMY_PLAYTESTS.md). Enemy steps
+  follow the toes (ball_l / ball_r; the ankles kept sinking ~0.25 s after a toe landed), with a floor estimate that
+  barely creeps while a foot is up; Functional.EnemyBehaviors checks a foot is no longer going down 0.1 s after its stomp
+  and logs the last landings. Stomps at pitch 1.45. The crash RPC carries the behaviour asset (for its effect).
+- **3D audio: Steam Audio** (2026-11-16, developer; ENEMY_PLAYTESTS.md, DEVELOPER_TODO.md, THIRD_PARTY_ASSETS.csv,
+  AI_CONTENT.md, Scripts/Tools/README.md). Valve's Steam Audio 4.8.1 in `Plugins/SteamAudio` (built from source on 5.7;
+  the engine's own copy is a deprecated beta) as the Windows spatialization plugin; `SA_EnemyVoice` and
+  `SA_EnemyFootsteps` Binaural; the 81 stereo sounds the enemies use made mono in place (`make_enemy_sounds_mono.py`;
+  the stomps are now cut mono by `import_npc_audio.py`). Settings → Audio → "3D Audio (headphones)", saved per player
+  (`UTHAudioSettingsSubsystem::Set3DAudioEnabled`, the audio device's HRTF switch). Test: `Content.EnemySpatialAudio`.
 - **Charger crash dust, dizzy stun; blood on the sirens** (2026-11-16, developer; ENEMY_ASSETS_TODO.md, ENEMIES.md,
   THIRD_PARTY_ASSETS.csv). Vefects' Wind VFX dust specks as the wall crash effect: a looping effect spawned for
   `DA_Charger` → Wall Crash Effect Time (0.4 s, new) at Effect Scale (0.6, new), then left to drift out

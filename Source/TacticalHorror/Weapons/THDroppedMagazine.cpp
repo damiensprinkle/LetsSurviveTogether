@@ -5,6 +5,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Settings/THAudioSettingsSubsystem.h"
 #include "Sound/SoundBase.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
 
 ATHDroppedMagazine::ATHDroppedMagazine()
 {
@@ -46,6 +48,11 @@ void ATHDroppedMagazine::Drop(UStaticMesh* Mesh, const FVector& Velocity, float 
 		MeshComponent->SetRelativeLocation(-Bounds.Origin);
 	}
 
+	// Falling from the third-person gun, which the holder doesn't see: crouched in first person that's just under their
+	// eyes, so it would fall through their view. They see it once it lands (or after a second, should it not).
+	MeshComponent->SetOwnerNoSee(true);
+	FTimerHandle Reveal;
+	GetWorldTimerManager().SetTimer(Reveal, this, &ATHDroppedMagazine::ShowToHolder, 1.0f, false);
 	Collision->OnComponentHit.AddDynamic(this, &ATHDroppedMagazine::OnMeshHit);
 	Collision->SetSimulatePhysics(true);
 	Collision->SetPhysicsLinearVelocity(Velocity);
@@ -54,10 +61,21 @@ void ATHDroppedMagazine::Drop(UStaticMesh* Mesh, const FVector& Velocity, float 
 
 void ATHDroppedMagazine::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
+	ShowToHolder();
 	if (bPlayedSound || !DropSound)
 	{
 		return;
 	}
 	bPlayedSound = true;
 	UGameplayStatics::PlaySoundAtLocation(this, DropSound, Hit.ImpactPoint, DropVolume * UTHAudioSettingsSubsystem::GetGunplayVolumeFor(this), FMath::FRandRange(0.95f, 1.05f));
+}
+
+void ATHDroppedMagazine::ShowToHolder()
+{
+	MeshComponent->SetOwnerNoSee(false);
+}
+
+bool ATHDroppedMagazine::IsShownToHolder() const
+{
+	return !MeshComponent->bOwnerNoSee;
 }

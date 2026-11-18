@@ -18,6 +18,10 @@ struct FTHSurfaceImpact
 {
 	GENERATED_BODY()
 
+	/** Its effects and decals are blood (flesh): a player with Blood off in Settings sees none of them, only hears the sounds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Impact")
+	bool bIsBlood = false;
+
 	/** Bullet-hole decals; one is picked at random per shot. Empty: no hole (flesh). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Impact")
 	TArray<TObjectPtr<UMaterialInterface>> Decals;

@@ -229,8 +229,9 @@ Each dies to one headshot. They don't patrol.
 
 Charger, decided (developer, 2026-11-12): a rare, heavily mutated enemy.
 Seeing a player at a distance it roars, then charges very fast in a
-nearly straight line; a hit hurts badly, a miss sends it sprawling on
-the ground for a long while, time to run away or to shoot it.
+nearly straight line; a hit hurts badly; running into a wall stuns it a long while, time to run
+away or to shoot it. A miss doesn't stun it: it pulls up and comes back
+(developer, 2026-11-17).
 
 Stalker, decided (developer, 2026-11-11): it lies hidden and unaware
 until it hears a player (or one looks at it, 2026-11-12), then follows them more like something hiding
@@ -269,6 +270,22 @@ in-world item the player looks at, such as a smartwatch showing heart
 rate (higher as sanity drops), or a journal. The item is still to be
 chosen. The same item could later carry other information instead of
 a traditional HUD (objectives, codes and clues for keypads).
+Decided (developer, 2026-11-17), built:
+- Drains: darkness (no lamp on you; your own flashlight only slows
+  it) and being alone (far from every teammate; never when playing
+  solo).
+- Restores: lit rooms, being near a teammate, and calm (a while with
+  nothing draining it).
+- Shown by the heartbeat alone for now (no item); near the bottom
+  the edges of the view darken, as if about to pass out, swelling
+  with each heartbeat.
+- Hallucinations are sounds: fake footsteps coming closer, and the
+  enemies' own sounds (a stalker breathing or moaning behind you,
+  hunter shouts and screams, door bangs, an ambusher shriek, a siren
+  crying, a charger's growl and stomps), the lower the sanity the
+  more often and the more alarming.
+- At zero: a fake enemy rushes the player and vanishes as it reaches
+  them (no harm). Shot, it dissolves into a puff of smoke.
 8. Mission Design
 Missions should be built from reusable objective types and data rather
 than mission-specific hardcoded logic.

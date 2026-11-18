@@ -2,9 +2,11 @@
 #include "Settings/THAudioSettingsSubsystem.h"
 #include "Settings/THCrosshairSettingsSubsystem.h"
 #include "Settings/THControlsSettingsSubsystem.h"
+#include "Settings/THDisplaySettingsSubsystem.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
@@ -98,6 +100,13 @@ void UTHAudioSettingsWidget::BuildLayout()
 	GunplaySlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleGunplayChanged);
 	MusicSlider = AddVolumeRow(Box, LOCTEXT("Music", "Music & ambience"), MusicValueText);
 	MusicSlider->OnValueChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleMusicChanged);
+	SpatialAudioCheck = AddToggleRow(Box, LOCTEXT("SpatialAudio", "3D Audio (headphones)"));
+	SpatialAudioCheck->OnCheckStateChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleSpatialAudioChanged);
+
+	// Display
+	AddSectionTitle(Box, LOCTEXT("DisplaySection", "Display"));
+	BloodCheck = AddToggleRow(Box, LOCTEXT("Blood", "Blood"));
+	BloodCheck->OnCheckStateChanged.AddDynamic(this, &UTHAudioSettingsWidget::HandleBloodChanged);
 
 	// Crosshair
 	AddSectionTitle(Box, LOCTEXT("CrosshairSection", "Crosshair"));
@@ -166,6 +175,18 @@ USlider* UTHAudioSettingsWidget::AddSliderRow(UVerticalBox* Box, const FText& La
 	ValueSlot->SetVerticalAlignment(VAlign_Center);
 
 	return Slider;
+}
+
+UCheckBox* UTHAudioSettingsWidget::AddToggleRow(UVerticalBox* Box, const FText& Label)
+{
+	UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>();
+	Box->AddChildToVerticalBox(Row)->SetPadding(FMargin(0.0f, 6.0f));
+	UHorizontalBoxSlot* LabelSlot = Row->AddChildToHorizontalBox(MakeText(WidgetTree, Label, 16));
+	LabelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	LabelSlot->SetVerticalAlignment(VAlign_Center);
+	UCheckBox* Check = WidgetTree->ConstructWidget<UCheckBox>();
+	Row->AddChildToHorizontalBox(Check)->SetVerticalAlignment(VAlign_Center);
+	return Check;
 }
 
 USlider* UTHAudioSettingsWidget::AddVolumeRow(UVerticalBox* Box, const FText& Label, TObjectPtr<UTextBlock>& OutValueText)
@@ -377,6 +398,14 @@ void UTHAudioSettingsWidget::NativeConstruct()
 			MusicSlider->SetValue(Settings->GetMusicVolume());
 			MusicValueText->SetText(FormatPercent(Settings->GetMusicVolume()));
 		}
+		if (SpatialAudioCheck)
+		{
+			SpatialAudioCheck->SetIsChecked(Settings->Is3DAudioEnabled());
+		}
+	}
+	if (const UTHDisplaySettingsSubsystem* Display = GetDisplaySettings(); Display && BloodCheck)
+	{
+		BloodCheck->SetIsChecked(Display->IsBloodEnabled());
 	}
 	RefreshSensitivityControls();
 	RefreshConverterGame();
@@ -392,6 +421,10 @@ void UTHAudioSettingsWidget::NativeDestruct()
 	if (UTHCrosshairSettingsSubsystem* Crosshair = GetCrosshairSettings())
 	{
 		Crosshair->SaveSettings();
+	}
+	if (UTHDisplaySettingsSubsystem* Display = GetDisplaySettings())
+	{
+		Display->SaveSettings();
 	}
 	Super::NativeDestruct();
 }
@@ -460,6 +493,20 @@ UTHControlsSettingsSubsystem* UTHAudioSettingsWidget::GetControlsSettings() cons
 	return GameInstance ? GameInstance->GetSubsystem<UTHControlsSettingsSubsystem>() : nullptr;
 }
 
+UTHDisplaySettingsSubsystem* UTHAudioSettingsWidget::GetDisplaySettings() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UTHDisplaySettingsSubsystem>() : nullptr;
+}
+
+void UTHAudioSettingsWidget::HandleBloodChanged(bool bIsChecked)
+{
+	if (UTHDisplaySettingsSubsystem* Display = GetDisplaySettings())
+	{
+		Display->SetBloodEnabled(bIsChecked);
+	}
+}
+
 FText UTHAudioSettingsWidget::FormatSensitivity(float Value)
 {
 	FNumberFormattingOptions Options;
@@ -516,6 +563,14 @@ void UTHAudioSettingsWidget::HandleMusicChanged(float Value)
 		Settings->SetMusicVolume(Value);
 	}
 	MusicValueText->SetText(FormatPercent(Value));
+}
+
+void UTHAudioSettingsWidget::HandleSpatialAudioChanged(bool bIsChecked)
+{
+	if (UTHAudioSettingsSubsystem* Settings = GetSettings())
+	{
+		Settings->Set3DAudioEnabled(bIsChecked);
+	}
 }
 
 void UTHAudioSettingsWidget::HandlePreviousStyle()

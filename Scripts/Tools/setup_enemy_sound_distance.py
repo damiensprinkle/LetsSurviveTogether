@@ -34,6 +34,8 @@ def make(path, inner, falloff):
     s = asset.get_editor_property('attenuation')
     s.set_editor_property('attenuate', True)
     s.set_editor_property('spatialize', True)
+    # Binaural through Steam Audio (2026-11-16): above / below / behind on headphones; the sounds must be mono (make_enemy_sounds_mono.py)
+    s.set_editor_property('spatialization_algorithm', unreal.SoundSpatializationAlgorithm.SPATIALIZATION_HRTF)
     s.set_editor_property('attenuation_shape', unreal.AttenuationShape.SPHERE)
     s.set_editor_property('attenuation_shape_extents', unreal.Vector(inner, 0, 0))
     s.set_editor_property('falloff_distance', falloff)

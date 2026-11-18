@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AudioDeviceHandle.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "THAudioSettingsSubsystem.generated.h"
 
@@ -10,6 +11,10 @@
  * Master scales everything through the audio device. Music scales the background music and ambience. Gunplay scales every gun sound where it is played: shots, reload
  * and draw foley (THAnimNotify_WeaponSound), shell casings, dropped magazines, dry fire and bullet impacts. A new
  * category is a new property here plus a multiplier where that sound is played.
+ *
+ * 3D audio (on by default) turns on binaural (HRTF) rendering from the Steam Audio plugin for the sounds whose attenuation
+ * asks for it (SA_EnemyVoice, SA_EnemyFootsteps): an enemy above, below or behind sounds like it, on headphones. Off falls
+ * back to plain left/right panning, which can suit speakers better.
  */
 UCLASS(Config = GameUserSettings)
 class TACTICALHORROR_API UTHAudioSettingsSubsystem : public UGameInstanceSubsystem
@@ -39,6 +44,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
 	void SetMusicVolume(float Volume);
 
+	/** Binaural (HRTF) rendering for enemy sounds; see the class comment. */
+	UFUNCTION(BlueprintPure, Category = "Audio Settings")
+	bool Is3DAudioEnabled() const { return b3DAudio; }
+
+	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
+	void Set3DAudioEnabled(bool bEnabled);
+
 	/** Writes the current values to GameUserSettings.ini. */
 	UFUNCTION(BlueprintCallable, Category = "Audio Settings")
 	void SaveSettings();
@@ -51,6 +63,8 @@ public:
 
 private:
 	void ApplyMasterVolume(float Volume) const;
+	void Apply3DAudio(bool bEnabled) const;
+	FAudioDeviceHandle GetAudioDevice() const;
 
 	UPROPERTY(Config)
 	float MasterVolume = 1.0f;
@@ -60,4 +74,7 @@ private:
 
 	UPROPERTY(Config)
 	float MusicVolume = 1.0f;
+
+	UPROPERTY(Config)
+	bool b3DAudio = true;
 };

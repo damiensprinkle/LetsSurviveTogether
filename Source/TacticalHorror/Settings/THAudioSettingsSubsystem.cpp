@@ -21,6 +21,7 @@ void UTHAudioSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	GunplayVolume = FMath::Clamp(GunplayVolume, 0.0f, 1.0f);
 	MusicVolume = FMath::Clamp(MusicVolume, 0.0f, 1.0f);
 	ApplyMasterVolume(MasterVolume);
+	Apply3DAudio(b3DAudio);
 }
 
 void UTHAudioSettingsSubsystem::Deinitialize()
@@ -28,6 +29,7 @@ void UTHAudioSettingsSubsystem::Deinitialize()
 	SaveSettings();
 	// The editor shares the audio device with play-in-editor, so don't leave it turned down after the session
 	ApplyMasterVolume(1.0f);
+	Apply3DAudio(true);
 	Super::Deinitialize();
 }
 
@@ -35,6 +37,7 @@ void UTHAudioSettingsSubsystem::SetMasterVolume(float Volume)
 {
 	MasterVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
 	ApplyMasterVolume(MasterVolume);
+	Apply3DAudio(b3DAudio);
 }
 
 void UTHAudioSettingsSubsystem::SetGunplayVolume(float Volume)
@@ -45,6 +48,12 @@ void UTHAudioSettingsSubsystem::SetGunplayVolume(float Volume)
 void UTHAudioSettingsSubsystem::SetMusicVolume(float Volume)
 {
 	MusicVolume = FMath::Clamp(Volume, 0.0f, 1.0f);
+}
+
+void UTHAudioSettingsSubsystem::Set3DAudioEnabled(bool bEnabled)
+{
+	b3DAudio = bEnabled;
+	Apply3DAudio(b3DAudio);
 }
 
 void UTHAudioSettingsSubsystem::SaveSettings()
@@ -68,7 +77,7 @@ float UTHAudioSettingsSubsystem::GetMusicVolumeFor(const UObject* WorldContext)
 	return Settings ? Settings->MusicVolume : 1.0f;
 }
 
-void UTHAudioSettingsSubsystem::ApplyMasterVolume(float Volume) const
+FAudioDeviceHandle UTHAudioSettingsSubsystem::GetAudioDevice() const
 {
 	const UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
 	FAudioDeviceHandle Device = World ? World->GetAudioDevice() : FAudioDeviceHandle();
@@ -76,8 +85,22 @@ void UTHAudioSettingsSubsystem::ApplyMasterVolume(float Volume) const
 	{
 		Device = GEngine->GetMainAudioDevice();
 	}
-	if (Device)
+	return Device;
+}
+
+void UTHAudioSettingsSubsystem::ApplyMasterVolume(float Volume) const
+{
+	if (FAudioDeviceHandle Device = GetAudioDevice())
 	{
 		Device->SetTransientPrimaryVolume(Volume);
+	}
+}
+
+void UTHAudioSettingsSubsystem::Apply3DAudio(bool bEnabled) const
+{
+	// Sounds whose attenuation asks for binaural fall back to panning while this is off (new sounds; one already playing keeps its method)
+	if (FAudioDeviceHandle Device = GetAudioDevice())
+	{
+		Device->SetHRTFDisabled(!bEnabled);
 	}
 }

@@ -6,6 +6,7 @@
 
 class UVerticalBox;
 class USlider;
+class UCheckBox;
 class UTextBlock;
 
 DECLARE_DELEGATE(FTHOnMenuCloseRequested);
@@ -13,7 +14,7 @@ DECLARE_DELEGATE(FTHOnMenuCloseRequested);
 /**
  * Settings panel (P / Escape in game, Settings on the main menu). Controls: look and aim-down-sights sensitivity,
  * from UTHControlsSettingsSubsystem, and a converter from other games' sensitivity. Audio: one slider per volume in
- * UTHAudioSettingsSubsystem. Crosshair: style (previous / next with a live preview), size and R / G / B colour, from
+ * UTHAudioSettingsSubsystem, and the 3D audio (binaural) toggle. Crosshair: style (previous / next with a live preview), size and R / G / B colour, from
  * UTHCrosshairSettingsSubsystem. (The class keeps its original "audio" name; it is the general settings panel.)
  * The layout is built in code so it works without a Widget Blueprint; a Blueprint subclass can replace it by giving
  * the panel its own widget tree. The labels are AI-written placeholders (see AI_CONTENT.md).
@@ -43,6 +44,7 @@ private:
 	void BuildLayout();
 	void AddSectionTitle(UVerticalBox* Box, const FText& Title);
 	USlider* AddSliderRow(UVerticalBox* Box, const FText& Label, float Min, float Max, float Step, TObjectPtr<UTextBlock>& OutValueText);
+	UCheckBox* AddToggleRow(UVerticalBox* Box, const FText& Label);
 	USlider* AddVolumeRow(UVerticalBox* Box, const FText& Label, TObjectPtr<UTextBlock>& OutValueText);
 	void AddCrosshairStyleRow(UVerticalBox* Box);
 	void AddSensitivityConverterRows(UVerticalBox* Box);
@@ -51,6 +53,7 @@ private:
 	class UTHAudioSettingsSubsystem* GetSettings() const;
 	class UTHCrosshairSettingsSubsystem* GetCrosshairSettings() const;
 	class UTHControlsSettingsSubsystem* GetControlsSettings() const;
+	class UTHDisplaySettingsSubsystem* GetDisplaySettings() const;
 	static FText FormatSensitivity(float Value);
 	static FText FormatPercent(float Value);
 	void RefreshCrosshairControls();
@@ -64,6 +67,12 @@ private:
 
 	UFUNCTION()
 	void HandleMusicChanged(float Value);
+
+	UFUNCTION()
+	void HandleSpatialAudioChanged(bool bIsChecked);
+
+	UFUNCTION()
+	void HandleBloodChanged(bool bIsChecked);
 
 	UFUNCTION()
 	void HandleLookSensitivityChanged(float Value);
@@ -157,6 +166,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<USlider> MusicSlider;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCheckBox> SpatialAudioCheck;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCheckBox> BloodCheck;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MasterValueText;

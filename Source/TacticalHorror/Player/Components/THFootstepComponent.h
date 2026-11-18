@@ -117,9 +117,15 @@ public:
 	 * Feet (bones of SetFootMesh's mesh): a step plays as one lands, so it lines up with the animation (developer, 2026-11-16:
 	 * the charger's stomps didn't), rather than every stride's distance. Feet that barely lift (a shuffle) still step once
 	 * well past a stride. Empty, or no such bones: by distance only (the players: no body of their own to watch).
+	 * The toes (ball_l / ball_r): a runner lands on them, and an ankle keeps sinking well after (measured on the charger's
+	 * run, 2026-11-16: by the ankle a step played about 0.25 s before the foot was down).
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet")
 	TArray<FName> FootBones;
+
+	/** Used in place of the FootBones entry at the same index when the mesh hasn't that bone (no toe bones: the ankles). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet")
+	TArray<FName> FallbackFootBones;
 
 	/** A foot this far above the lowest it has been lately is off the floor... */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Footsteps|Feet", meta = (Units = "cm", ClampMin = 1))
@@ -132,11 +138,20 @@ public:
 	void SetFootMesh(USkeletalMeshComponent* Mesh);
 
 	/** Steps of its own, whatever the floor (a charger's stomp), one at random per walk or run step; empty = by surface. */
-	void SetStepSoundOverride(const TArray<TObjectPtr<USoundBase>>& Sounds, float Volume = 1.0f) { StepSoundOverride = Sounds; StepOverrideVolume = Volume; }
+	void SetStepSoundOverride(const TArray<TObjectPtr<USoundBase>>& Sounds, float Volume = 1.0f, float Pitch = 1.0f)
+	{
+		StepSoundOverride = Sounds;
+		StepOverrideVolume = Volume;
+		StepOverridePitch = Pitch;
+	}
 
 	/** Steps played so far, and how many of them a foot landing set off (tests). */
 	int32 GetStepCount() const { return StepCount; }
 	int32 GetFootLandingCount() const { return FootLandingCount; }
+	/** How long after its step a foot was still going down, at most (s; tests: a step played early shows as a long time). */
+	float GetLatestLowAfterLanding() const { return LatestLowAfterLanding; }
+	/** The last few landings: bone, height above the floor estimate as it played, then how far and how long it went on down. */
+	const TArray<FString>& GetRecentLandings() const { return RecentLandings; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -152,10 +167,17 @@ private:
 	struct FFoot
 	{
 		FName Bone;
-		float Floor = 0.0f;	// cm above the capsule's bottom: the lowest lately (it creeps up, for slopes and stairs)
+		float Floor = 0.0f;	// cm above the capsule's bottom: the lowest lately (it creeps up while down, for slopes and stairs)
 		bool bHasFloor = false;
 		bool bLifted = false;
+		float Lowest = 0.0f;	// the lowest since its step played, and how long since (to measure how late it got there)
+		float SinceLanded = -1.0f;
+		float LandedHeight = 0.0f;
+		float LowestAt = 0.0f;
+		float LandedOverFloor = 0.0f;
 	};
+	float LatestLowAfterLanding = 0.0f;
+	TArray<FString> RecentLandings;
 	TArray<FFoot> TrackedFeet;
 	TWeakObjectPtr<USkeletalMeshComponent> FootMesh;
 	double LastStepTime = -1.0;
@@ -166,6 +188,7 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<USoundBase>> StepSoundOverride;
 	float StepOverrideVolume = 1.0f;
+	float StepOverridePitch = 1.0f;
 	float DistanceSinceStep = 0.0f;
 	bool bWasFalling = false;
 	float FallSpeed = 0.0f;

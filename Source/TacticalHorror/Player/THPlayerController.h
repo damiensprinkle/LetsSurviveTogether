@@ -39,6 +39,16 @@ public:
 	UFUNCTION(Exec)
 	void WeaponLight();
 
+	/** Console: set your sanity, 0-100 (for testing; th.SanityDebug 1 shows it). Hallucinate <name>: hear one now (none: any). */
+	UFUNCTION(Exec)
+	void Sanity(float Value);
+
+	UFUNCTION(Exec)
+	void Hallucinate(const FString& Name);
+
+	UFUNCTION(Server, Reliable)
+	void ServerSetSanity(float Value);
+
 	/** Look input, scaled by the player's look sensitivity (and aim sensitivity while aiming down sights). */
 	virtual void AddYawInput(float Val) override;
 	virtual void AddPitchInput(float Val) override;

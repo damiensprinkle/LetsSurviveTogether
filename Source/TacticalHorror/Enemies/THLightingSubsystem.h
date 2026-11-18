@@ -25,8 +25,16 @@ public:
 
 	float GetLightOn(const APawn* Player) const;
 
+	/** Only the level's lamps on them, as above, leaving out lights they carry (sanity: a lit room, not a flashlight). */
+	float GetLampLightOn(const APawn* Player) const;
+
+	/** A light of their own is on (a flashlight, a weapon light). */
+	bool HasOwnLightOn(const APawn* Player) const;
+
 private:
 	float Measure(const APawn* Player) const;
+	float MeasureLamps(const APawn* Player) const;
+	mutable TMap<TWeakObjectPtr<const APawn>, TPair<double, float>> LampCache;
 
 	mutable TArray<TWeakObjectPtr<ULightComponent>> Lamps;
 	mutable double LampsListedAt = -1.0e9;

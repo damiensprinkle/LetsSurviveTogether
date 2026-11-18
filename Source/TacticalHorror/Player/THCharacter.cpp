@@ -1,4 +1,5 @@
 #include "Player/THCharacter.h"
+#include "Player/Components/THSanityComponent.h"
 #include "EngineUtils.h"
 #include "Enemies/THEnemyCharacter.h"
 #include "Components/LightComponent.h"
@@ -157,6 +158,7 @@ ATHCharacter::ATHCharacter(const FObjectInitializer& ObjectInitializer)
 	HealthComponent = CreateDefaultSubobject<UTHHealthComponent>(TEXT("THHealth"));
 	WeaponComponent = CreateDefaultSubobject<UTHWeaponComponent>(TEXT("THWeapons"));
 	FootstepComponent = CreateDefaultSubobject<UTHFootstepComponent>(TEXT("THFootsteps"));
+	SanityComponent = CreateDefaultSubobject<UTHSanityComponent>(TEXT("THSanity"));
 
 	// Bullets pass the capsule and hit the skeletal mesh, so hits know which bone (headshots)
 	GetCapsuleComponent()->SetCollisionResponseToChannel(WeaponTraceChannel, ECR_Ignore);

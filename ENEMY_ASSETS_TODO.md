@@ -13,9 +13,11 @@ AI-made content (AI_INSTRUCTIONS.md). Started 2026-11-13; tick items off as they
 - [ ] **Siren clothes** (in progress) — re-assemble MHC_Advika, MHC_Hannah and Mara1 (Skotukeda) with an outfit from
   MetaHuman Creator's wardrobe (output folder `/Game/MetaHumans`), then re-run `setup_metahumans.py`. Zombie clothes
   don't fit MetaHumans (different skeleton and proportions); Npc_1 and Npc_2 already have outfits.
-- [ ] **A real dust or debris impact effect for the charger's wall crash** (optional) — for now Vefects' Wind VFX dust
-  specks as a short puff (below, "In 2026-11-16"); if that doesn't read as a crash in play, a pack with an impact
-  burst. Goes in: `DA_Charger` → Wall Crash Effect (and Wall Crash Effect Time 0 for a one-shot).
+- [x] **A dust impact effect for the charger's wall crash** (2026-11-17) — made by the developer: `NS_ChargerWallDust`
+  (Directional Burst emitter, one burst of soft lit puffs fanning out of the wall, drag, growing and fading) with
+  `M_Dust` (translucent, lit; radial gradient × Lyra's `T_Inky_Smoke_Tile` × particle alpha, depth fade), in
+  `/Game/Enemies/Effects`; on `DA_Charger` → Wall Crash Effect, Effect Time 0. Vefects' Wind VFX dust was tried first
+  (below) and couldn't be seen. Optional later: concrete chips (a second emitter with collision).
 - [ ] **A female zombie voice pack** — F02 (the Starved female) speaks with the male voices. Goes in: needs a voice
   set per look first (not built), or a female behaviour variant's sounds.
 - [ ] **A sinister laugh for the stalker** (optional, developer 2026-11-14: if a sound effect can be found) — it moans
@@ -40,9 +42,9 @@ AI-made content (AI_INSTRUCTIONS.md). Started 2026-11-13; tick items off as they
   developer's find) for its Stumble Down Time, and shakes it off with a short roar. It doesn't flinch when shot
   (developer: it shouldn't). Mutant Breathing Idle is imported, unused. Mutant Walking and Mutant Run came down not
   "In Place": handled (Walk / Run Travel), but "In Place" is the simpler download for later locomotion clips.
-- [x] **Wall crash dust** — Vefects' free Wind VFX (`/Game/Vefects/Wind_VFX`): its looping dust specks
-  (`NS_Wind_Dust_Specs_01`) spawned at the crash for 0.4 s at 0.6 scale, then drifting out (`DA_Charger` → Wall Crash
-  Effect, Effect Time, Effect Scale; `setup_charger_dust.py`). The pack's effect as made, only placed and timed by code.
+- [x] **Wall crash dust (tried, removed 2026-11-17)** — Vefects' free Wind VFX (`/Game/Vefects/Wind_VFX`) dust specks
+  (`NS_Wind_Dust_Specs_01`) spawned briefly at the crash, then turned up (burst, size, speed). An ambient wind effect:
+  not seen in play either way, so taken off `DA_Charger`. The pack stays in the project, unused.
 - [x] **Blood on the sirens' faces** (developer: to fit the environment) — the MetaHuman Blood Overlay pack (Lite,
   `/Game/MHBOP_Lite`): a copy of the MetaHumans' baked skin material with its overlay, and per siren a face material
   with her own settings and one of the pack's two masks (forehead or over the nose), worn through

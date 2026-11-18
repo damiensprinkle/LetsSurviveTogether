@@ -46,11 +46,12 @@ float UTHLightingSubsystem::GetLightOn(const APawn* Player) const
 	return Light;
 }
 
-float UTHLightingSubsystem::Measure(const APawn* Player) const
+bool UTHLightingSubsystem::HasOwnLightOn(const APawn* Player) const
 {
-	UWorld* World = GetWorld();
-
-	// Their own light on: lit
+	if (!Player)
+	{
+		return false;
+	}
 	TArray<AActor*> Carried;
 	Player->GetAttachedActors(Carried, true, true);
 	Carried.Add(const_cast<APawn*>(Player));
@@ -61,10 +62,38 @@ float UTHLightingSubsystem::Measure(const APawn* Player) const
 		{
 			if (IsShining(Light))
 			{
-				return 1.0f;
+				return true;
 			}
 		}
 	}
+	return false;
+}
+
+float UTHLightingSubsystem::GetLampLightOn(const APawn* Player) const
+{
+	if (!Player)
+	{
+		return 0.0f;
+	}
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (const TPair<double, float>* Kept = LampCache.Find(Player); Kept && Now - Kept->Key < 0.25)
+	{
+		return Kept->Value;
+	}
+	const float Light = MeasureLamps(Player);
+	LampCache.Add(Player, TPair<double, float>(Now, Light));
+	return Light;
+}
+
+float UTHLightingSubsystem::Measure(const APawn* Player) const
+{
+	// Their own light on: lit
+	return HasOwnLightOn(Player) ? 1.0f : MeasureLamps(Player);
+}
+
+float UTHLightingSubsystem::MeasureLamps(const APawn* Player) const
+{
+	UWorld* World = GetWorld();
 
 	// The level's lamps, listed every few seconds
 	const double Now = World->GetTimeSeconds();

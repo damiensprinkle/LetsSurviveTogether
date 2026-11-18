@@ -1,4 +1,5 @@
 #include "UI/THStatusWidget.h"
+#include "Settings/THDisplaySettingsSubsystem.h"
 #include "Core/THGameState.h"
 #include "Player/Components/THHealthComponent.h"
 #include "Blueprint/WidgetTree.h"
@@ -25,7 +26,7 @@ namespace
 	/** Splatters that can show at once (older ones are reused). */
 	constexpr int32 SplatterCount = 6;
 
-	UTextBlock* MakeText(UWidgetTree* Tree, FName Name, int32 Size)
+	UTextBlock* MakeStatusText(UWidgetTree* Tree, FName Name, int32 Size)
 	{
 		UTextBlock* Block = Tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), Name);
 		FSlateFontInfo Font = Block->GetFont();
@@ -148,10 +149,10 @@ void UTHStatusWidget::BuildLayout()
 	BoxSlot->SetVerticalAlignment(VAlign_Center);
 	BoxSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 260.0f));
 
-	TitleText = MakeText(WidgetTree, TEXT("TitleText"), 44);
+	TitleText = MakeStatusText(WidgetTree, TEXT("TitleText"), 44);
 	Box->AddChildToVerticalBox(TitleText)->SetHorizontalAlignment(HAlign_Center);
 
-	DetailText = MakeText(WidgetTree, TEXT("DetailText"), 18);
+	DetailText = MakeStatusText(WidgetTree, TEXT("DetailText"), 18);
 	DetailText->SetColorAndOpacity(FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f, 1.0f)));
 	UVerticalBoxSlot* DetailSlot = Box->AddChildToVerticalBox(DetailText);
 	DetailSlot->SetHorizontalAlignment(HAlign_Center);
@@ -163,8 +164,8 @@ void UTHStatusWidget::ShowHit(float Strength)
 	Strength = FMath::Clamp(Strength, 0.1f, 1.5f);
 	FlashAlpha = FMath::Max(FlashAlpha, 0.18f + 0.12f * Strength);
 
-	// One splatter, two for a heavy blow; each near an edge or corner, at a random size and turn
-	const int32 Count = Strength >= 0.75f ? 2 : 1;
+	// One splatter, two for a heavy blow; each near an edge or corner, at a random size and turn. None with Blood off (the flash stays).
+	const int32 Count = !UTHDisplaySettingsSubsystem::IsBloodEnabledFor(this) ? 0 : Strength >= 0.75f ? 2 : 1;
 	// The blood already there stays too: it all clears together once they've gone a while without a hit
 	for (int32 Index = 0; Index < BloodImages.Num(); ++Index)
 	{

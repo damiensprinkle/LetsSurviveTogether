@@ -32,15 +32,45 @@ The developer's notes (with two screenshots of a Priest), what was wrong, and wh
   stomps are cut to 0.5 s (`import_npc_audio.py`), and they play at 0.3 (`DA_MutantLooks` → Footstep Volume).
   - Problem if: steps double up, or go missing at a slow run. Tuning: Foot Lift Height / Foot Plant Height on BP_Zombie's
     footsteps.
-- [ ] **"Hard to make out the direction of enemy footsteps on headphones."** Not changed yet: they are positioned
-  (`SA_EnemyFootsteps`), but with plain left/right panning, no HRTF, so in front and behind sound alike; the stomp files
-  are also stereo, which spreads them. Waiting on the developer: an HRTF spatialiser plugin (DEVELOPER_TODO).
-- [ ] **The charger's new animations** (the developer's Mixamo mutant clips) and its stun: after a crash or a miss it
-  stays on its feet, dizzy (Mixamo Dizzy Idle), then roars and comes on (it used to fall and crawl).
+  - **Still not lined up** (developer, 2026-11-16, second look). Measured on its run clip: it lands toe first, and the
+    ankle (what was watched) kept sinking for about 0.25 s after the toe was down, while the floor estimate crept up to
+    meet it; so each stomp played early. Now the toes are watched (ball_l / ball_r, ankles only on a skeleton without
+    them) and the floor estimate barely moves while a foot is up. In the test each stomp now plays within 0.07 s of the
+    toe reaching its lowest (Functional.EnemyBehaviors logs the last landings). The stomp files themselves hit 15-40 ms in.
+- [ ] **"Hard to make out the direction of enemy footsteps on headphones."** Now binaural (HRTF), as CS2 does: Valve's
+  Steam Audio plugin renders `SA_EnemyVoice` and `SA_EnemyFootsteps`, and every enemy sound is mono (stereo files were
+  only panned, and spread). Settings → Audio → "3D Audio (headphones)" turns it off (plain panning, for speakers).
+  - Try: on headphones, an enemy walking round you, behind you, on the floor above. Problem if: the sound seems inside
+    your head, or front and back still blur. Then also compare with the toggle off.
+- [ ] **The charger's new animations** (the developer's Mixamo mutant clips) and its stun: after a wall crash it
+  stays on its feet, dizzy (Mixamo Dizzy Idle), then roars and comes on (it used to fall and crawl). A miss no longer
+  stuns it (2026-11-17, below).
   - Try: a wall crash, a sidestepped miss; the run at full charge speed (its feet sliding?).
-- [ ] **The charger's wall crash dust** (Vefects' Wind VFX dust specks, spawned 0.4 s then drifting out): does it read
-  as a crash? Tuning: `DA_Charger` → Wall Crash Effect Time / Scale. It is a wind effect, so if it looks like motes in
-  a sunbeam rather than dust knocked loose, a pack with a real impact burst is the next step.
+- [ ] **"When limbs fall off the body makes really long stretch lines, several feet"** (a screenshot of a dead Priest).
+  Once a body is a ragdoll and a limb's physics bodies are gone, that limb's bones have no meaningful pose of their own
+  (a dead Priest's cut thigh measured 20 m away), and the stump was collapsed onto it. The stump is now placed from the
+  parent bone (pelvis, clavicle, neck) and the skeleton's own offset. Test: a Priest's legs and arm off alive, crawling,
+  dead and on the corpse, its skin skinned on the CPU, nothing over 120 cm from the pelvis.
+- [ ] **"The charger's footsteps are too deep, he sounds heavier than he is."** Its stomps now play higher, at pitch
+  1.3 (`DA_MutantLooks` → Footstep Pitch, new; `import_npc_audio.py`). Higher is lighter; below 1 would be heavier.
+- [x] **The charger's wall crash dust**: Vefects' wind dust wasn't seen in play; replaced by the developer's own
+  `NS_ChargerWallDust` (2026-11-17: "looks good, maybe a tad too big"; tuned in the Niagara editor).
+- [ ] **"The hunter's audio keeps playing even if he dies."** (2026-11-17) Its voice (a scream, a growl) was attached
+  to the body and played out from the corpse. Now it fades out over 0.15 s as it dies. Try: kill a hunter mid-scream.
+- [ ] **"If the charger runs into a wall at a bit of an angle it doesn't seem to collide, it just stops."** (2026-11-17)
+  Only a wall nearly square on (within 60°) counted; at a slant it slid along until it stalled, then gave up like a
+  miss. Now its body being stopped by a wall at least 15° off parallel is a crash (`DA_Charger` → Wall Crash Min
+  Angle); a shallower graze still slides. Try: walls at different angles, a corner.
+- [ ] **"The charger walks almost as fast as I can, so it's hard to get him to charge again."** (2026-11-17) Its run
+  speed up close is now 180 cm/s (was 300; you walk at 260), so you can back off past Charge Min Distance (5 m) and
+  draw another charge. Tuning: `DA_Charger` → Run Speed. Watch its feet at that speed (sliding?).
+- [ ] **"Saw a leg that fell off a zombie stand up and spin forever."** (2026-11-17) Fallen pieces are now damped as
+  they tumble and put to sleep once still (at the latest 4.5 s after coming off). Shoot legs off a few times: does any
+  stand and spin, or freeze in an odd pose? Tuning on the enemy Blueprint: Severed Piece Angular Damping (2), Settle
+  Time (1.5 s), Rest Speed (30 cm/s).
+- [ ] **"The charger stops before hitting a wall."** (2026-11-17) That was a miss: it gave up 1.5 m past you (or after
+  25 m), wherever it was, and sprawled. Now a miss isn't stunned (developer): it pulls up (Charge Miss Recover Time,
+  0.6 s) and comes back at you. Only running into a wall stuns it. Check a sidestep near a wall reads right.
 - [ ] **Blood on the sirens' faces** (forehead or over the nose; MetaHuman Blood Overlay). Check the face isn't black or
   checkered (the bloodied skin material compiles the first time the editor opens it), and the blood sits right.
 - [ ] **A zombie with both arms off bites** (Mixamo Zombie Neck Bite) and a zombie shot from behind buckles forward

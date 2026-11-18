@@ -14,7 +14,8 @@ file; THIRD_PARTY_ASSETS.csv). Imports them into /Game/Audio/Enemies and puts ea
 
 The enemy sounds are heard in the world like an enemy's voice (SA_EnemyVoice; the stomps SA_EnemyFootsteps); the crackle
 plays at the player's own light. The DA_Hunter/DA_Ambusher/DA_Charger settings are also in setup_tactics.py, which loads
-these assets: run this first. Headless, editor closed:
+these assets: run this first. The stomps are cut in mono; for 3D audio the other stereo files need make_enemy_sounds_mono.py
+afterwards (re-importing them here brings back their stereo). Headless, editor closed:
   UnrealEditor-Cmd.exe "<abs>\\LetsSurviveTogether.uproject" -run=pythonscript -script="<abs>/Scripts/Tools/import_npc_audio.py" -nullrhi -unattended
 """
 import os
@@ -40,6 +41,8 @@ STOMP_STARTS = [0.0, 2.09, 4.14, 6.24]   # s: each stomp's onset in the sequence
 # Short (developer, 2026-11-16): at a run, 1.5 s stomps overlapped three or four deep and didn't line up with the feet
 STOMP_LENGTH = 0.5
 STOMP_FADE = 0.2
+# Played higher (developer, 2026-11-16: too deep, heavier than the charger looks; then still a little bassy): DA_MutantLooks → Footstep Pitch
+STOMP_PITCH = 1.45
 WORK = os.path.join(unreal.Paths.project_saved_dir(), 'NpcAudio')
 eal = unreal.EditorAssetLibrary
 tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -84,22 +87,25 @@ def cut_stomps():
         frames = source.readframes(source.getnframes())
     if width != 2:
         raise RuntimeError('expected 16-bit audio, got %d bytes a sample' % width)
+    # Mono, for 3D audio (only one-channel sounds are rendered binaurally): the channels averaged
     frame = channels * width
+    mono = bytearray(len(frames) // channels)
+    for i in range(len(frames) // frame):
+        total = sum(int.from_bytes(frames[i * frame + c * 2:i * frame + c * 2 + 2], 'little', signed=True) for c in range(channels))
+        mono[i * 2:i * 2 + 2] = int(total / channels).to_bytes(2, 'little', signed=True)
     for index, start in enumerate(STOMP_STARTS, 1):
         first = int(start * rate)
         count = int(STOMP_LENGTH * rate)
-        chunk = bytearray(frames[first * frame:(first + count) * frame])
-        count = len(chunk) // frame
+        chunk = mono[first * 2:(first + count) * 2]
+        count = len(chunk) // 2
         fade = int(STOMP_FADE * rate)
         for i in range(max(count - fade, 0), count):
             gain = (count - i) / float(fade)
-            for c in range(channels):
-                at = i * frame + c * 2
-                value = int.from_bytes(chunk[at:at + 2], 'little', signed=True)
-                chunk[at:at + 2] = int(value * gain).to_bytes(2, 'little', signed=True)
+            value = int.from_bytes(chunk[i * 2:i * 2 + 2], 'little', signed=True)
+            chunk[i * 2:i * 2 + 2] = int(value * gain).to_bytes(2, 'little', signed=True)
         path = os.path.join(WORK, 'ChargerStomp_%02d.wav' % index)
         with wave.open(path, 'wb') as piece:
-            piece.setnchannels(channels)
+            piece.setnchannels(1)
             piece.setsampwidth(width)
             piece.setframerate(rate)
             piece.writeframes(bytes(chunk))
@@ -132,6 +138,7 @@ def main():
 
     mutants = eal.load_asset('/Game/Enemies/Appearance/DA_MutantLooks')
     mutants.set_editor_property('footstep_sounds', stomps)
+    mutants.set_editor_property('footstep_pitch', STOMP_PITCH)
     eal.save_loaded_asset(mutants, False)
 
     zombie = eal.load_asset('/Game/Enemies/BP_Zombie')

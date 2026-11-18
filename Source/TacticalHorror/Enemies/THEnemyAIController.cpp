@@ -681,7 +681,7 @@ void ATHEnemyAIController::ThinkCharger(float DeltaSeconds)
 				&& FVector::DotProduct((Victim->GetActorLocation() - Location).GetSafeNormal2D(), ChargeDirection) > 0.3f)
 			{
 				Body->DealBlow(Victim, Behavior->ChargeDamage);
-				EndCharge(true);
+				EndCharge(EChargeEnd::Hit);
 				return;
 			}
 		}
@@ -721,13 +721,31 @@ void ATHEnemyAIController::ThinkCharger(float DeltaSeconds)
 			}
 			return false;
 		};
+		// Its body stopped by a wall met at a slant (the traces ahead only see one nearly square on): a crash too, unless it
+		// only grazed it (developer, 2026-11-17: at an angle it didn't crash, it just stopped)
+		FHitResult Bump;
+		if (Body->GetBlockSince(FMath::Max(ChargeStartTime, Now() - 0.1), Bump))
+		{
+			AActor* Other = Bump.GetActor();
+			const UPrimitiveComponent* Part = Bump.GetComponent();
+			const UTHDoorSyncComponent* Door = Other ? Other->FindComponentByClass<UTHDoorSyncComponent>() : nullptr;
+			const bool bScenery = Other && !Cast<APawn>(Other) && !(Part && Part->IsSimulatingPhysics()) && !(Door && Door->CanBeOpened());
+			const FVector Out = Bump.ImpactNormal.GetSafeNormal2D();
+			const bool bWall = Bump.ImpactNormal.Z < 0.7 && !Out.IsNearlyZero();
+			if (bScenery && bWall && FVector::DotProduct(Out, -ChargeDirection) >= FMath::Sin(FMath::DegreesToRadians(Behavior->WallCrashMinAngle)))
+			{
+				Body->WallCrash(Bump.ImpactPoint, Out);
+				EndCharge(EChargeEnd::Crash);
+				return;
+			}
+		}
 		const bool bWallAhead = TraceAhead(Behavior->WallCrashReach, true);
 		const bool bStalled = !bWallAhead && Now() - ChargeStartTime > 0.6 && Body->GetVelocity().Size2D() < Behavior->ChargeSpeed * 0.3f
 			&& TraceAhead(80.0f, false);
 		if (bWallAhead || bStalled)
 		{
 			Body->WallCrash(Hit.ImpactPoint, Hit.ImpactNormal);
-			EndCharge(false);
+			EndCharge(EChargeEnd::Crash);
 			return;
 		}
 		// A miss: past them, stopped, or too far
@@ -736,7 +754,7 @@ void ATHEnemyAIController::ThinkCharger(float DeltaSeconds)
 		const bool bTooFar = FVector::Dist2D(Location, ChargeStart) > Behavior->ChargeMaxDistance || Now() - ChargeStartTime > 6.0;
 		if (bPast || bBlocked || bTooFar)
 		{
-			EndCharge(false);
+			EndCharge(EChargeEnd::Miss);
 		}
 		return;
 	}
@@ -923,18 +941,24 @@ bool ATHEnemyAIController::HasClearRun(const APawn* Player) const
 	return !GetWorld()->SweepSingleByObjectType(Hit, From, To, FQuat::Identity, Objects, Shape, Params);
 }
 
-void ATHEnemyAIController::EndCharge(bool bHit)
+void ATHEnemyAIController::EndCharge(EChargeEnd How)
 {
 	ATHEnemyCharacter* Body = Enemy.Get();
 	StopMovement();
 	SetSpeed(Behavior->RunSpeed);
 	SetState(ETHEnemyState::Stumble);
-	if (bHit)
+	if (How == EChargeEnd::Hit)
 	{
 		PhaseEnd = Now() + Behavior->ChargeRecoverTime;
 		return;
 	}
-	// Sprawling: down a long while, then a slow struggle back up (time to run, or to shoot it)
+	// A miss: it pulls up (slowing on its own, no stun) and turns back on them (developer, 2026-11-17: a miss shouldn't stun)
+	if (How == EChargeEnd::Miss)
+	{
+		PhaseEnd = Now() + Behavior->ChargeMissRecoverTime;
+		return;
+	}
+	// A wall: stunned a long while, then shakes it off (time to run, or to shoot it)
 	Body->GetCharacterMovement()->StopMovementImmediately();
 	const float Length = Body->PlayStumble(Behavior->StumbleDownTime);
 	PhaseEnd = Now() + FMath::Max(Length, Behavior->StumbleDownTime);

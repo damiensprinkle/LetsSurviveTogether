@@ -13,6 +13,11 @@
 #include "Enemies/THEnemyAppearance.h"
 #include "Engine/SkeletalMesh.h"
 #include "Materials/MaterialInstance.h"
+#include "AudioDevice.h"
+#include "Engine/Engine.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Sound/SoundAttenuation.h"
+#include "Sound/SoundWave.h"
 
 namespace THContentTests
 {
@@ -296,6 +301,57 @@ bool FTHArmlessAttackTest::RunTest(const FString& Parameters)
 	const FTHEnemyAttack* Bite = Zombie->GetAttack(Zombie->Attacks.Num());
 	TestTrue(TEXT("The index after the arm attacks is the first armless one"), Bite && !Zombie->ArmlessAttacks.IsEmpty() && Bite == &Zombie->ArmlessAttacks[0]);
 	TestNull(TEXT("Past both lists: none"), Zombie->GetAttack(Zombie->Attacks.Num() + Zombie->ArmlessAttacks.Num()));
+	return true;
+}
+
+// 3D audio (developer, 2026-11-16: enemy footsteps hard to place on headphones): the Steam Audio plugin renders the enemy
+// attenuations binaurally, which works only on mono sounds (make_enemy_sounds_mono.py)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTHEnemySpatialAudioTest, "TacticalHorror.Content.EnemySpatialAudio",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FTHEnemySpatialAudioTest::RunTest(const FString& Parameters)
+{
+	FString Plugin;
+	GConfig->GetString(TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings"), TEXT("SpatializationPlugin"), Plugin, GEngineIni);
+	TestEqual(TEXT("Windows spatialization plugin"), Plugin, FString(TEXT("Steam Audio Spatialization")));
+	if (GEngine && GEngine->GetMainAudioDevice())
+	{
+		TestTrue(TEXT("The audio device loaded the spatialization plugin"), GEngine->GetMainAudioDevice()->IsSpatializationPluginEnabled());
+	}
+
+	for (const TCHAR* Path : { TEXT("/Game/Audio/SA_EnemyVoice.SA_EnemyVoice"), TEXT("/Game/Audio/SA_EnemyFootsteps.SA_EnemyFootsteps") })
+	{
+		const USoundAttenuation* Attenuation = LoadObject<USoundAttenuation>(nullptr, Path);
+		if (TestNotNull(*FString::Printf(TEXT("%s loads"), Path), Attenuation))
+		{
+			TestTrue(*FString::Printf(TEXT("%s is binaural"), Path), Attenuation->Attenuation.SpatializationAlgorithm == ESoundSpatializationAlgorithm::SPATIALIZATION_HRTF);
+		}
+	}
+
+	// The enemies' own sounds and the charger's stomps (not LightCrackle: the player's own light). One wave a package:
+	// an import over an asset can leave the old one behind as SoundWave_0 (make_enemy_sounds_mono.py removes it)
+	TArray<FAssetData> Sounds;
+	IAssetRegistry::GetChecked().GetAssetsByPath(TEXT("/Game/Audio/Enemies"), Sounds, true);
+	int32 Checked = 0;
+	for (const FAssetData& Data : Sounds)
+	{
+		TestEqual(*FString::Printf(TEXT("%s is the package's own asset"), *Data.GetObjectPathString()), Data.AssetName, FName(*FPackageName::GetShortName(Data.PackageName)));
+		const USoundWave* Wave = Cast<USoundWave>(Data.GetAsset());
+		if (Wave && Data.AssetName != TEXT("LightCrackle"))
+		{
+			++Checked;
+			TestEqual(*FString::Printf(TEXT("%s is mono"), *Wave->GetName()), (int32)Wave->NumChannels, 1);
+		}
+	}
+	TestTrue(TEXT("Found the enemy sounds"), Checked >= 10);
+	if (const UTHEnemyAppearance* Mutants = LoadObject<UTHEnemyAppearance>(nullptr, TEXT("/Game/Enemies/Appearance/DA_MutantLooks.DA_MutantLooks")))
+	{
+		for (const USoundBase* Step : Mutants->FootstepSounds)
+		{
+			const USoundWave* Wave = Cast<USoundWave>(Step);
+			TestTrue(*FString::Printf(TEXT("Stomp %s is a mono wave"), *GetNameSafe(Step)), Wave && Wave->NumChannels == 1);
+		}
+	}
 	return true;
 }
 

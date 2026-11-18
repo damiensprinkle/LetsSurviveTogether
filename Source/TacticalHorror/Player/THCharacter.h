@@ -30,6 +30,7 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UTHHealthComponent* GetHealthComponent() const { return HealthComponent; }
+	class UTHSanityComponent* GetSanityComponent() const { return SanityComponent; }
 
 	UFUNCTION(BlueprintPure, Category = "Character")
 	UTHWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
@@ -150,6 +151,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UTHHealthComponent> HealthComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UTHSanityComponent> SanityComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UTHWeaponComponent> WeaponComponent;

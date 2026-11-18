@@ -17,17 +17,24 @@ Enemy assets (detail and where each goes: ENEMY_ASSETS_TODO.md):
   Construction). (The drag, the sitting siren's wave and get-up: dropped, 2026-11-16; a hit from behind: in.)
 - [ ] Optional: **clothed limb pieces for M02 and F02** (jeans, T-shirt, singlet, skirt), or say it's fine: their
   pieces in the pack are bare skin, so a leg in jeans falls bare (2026-11-15, ENEMY_PLAYTESTS.md).
-- [ ] Optional: **a real dust or debris impact** for the charger's wall crash, if Vefects' wind dust (in, 2026-11-16)
-  doesn't read as a crash in play. And check the licences of the two packs added 2026-11-16 (THIRD_PARTY_ASSETS.csv:
-  Wind VFX, MetaHuman Blood Overlay Lite: where it came from).
+- [x] **A dust impact** for the charger's wall crash: your `NS_ChargerWallDust` (2026-11-17). Still open: check the
+  licence of MetaHuman Blood Overlay Lite (THIRD_PARTY_ASSETS.csv: where it came from).
 - [ ] Optional (added 2026-11-14, ENEMY_ASSETS_TODO.md): a female zombie voice pack; a sinister laugh for the stalker.
   (The charger's own roar, its dizzy stun, and a bite for an armless zombie: in, 2026-11-16.)
 
 Audio:
-- [ ] **Decide: HRTF for 3D sound** (2026-11-16: enemy steps are hard to place on headphones). Now plain left/right
-  panning (no plugin; DefaultEngine.ini → SpatializationPlugin empty), so in front and behind sound alike. Steam
-  Audio and Microsoft Spatial Audio ship with the engine; one of them, then the enemy attenuations' Spatialization
-  Method set to Binaural. Say which (or none) and Claude sets it up.
+- [x] **3D audio (Steam Audio 4.8.1)** heard in play and kept (developer, 2026-11-17). The toggle's label is
+  AI-written (AI_CONTENT.md).
+
+Display:
+- [ ] **Settings → Display → Blood** (on / off, 2026-11-17): with it off, shooting a zombie shows no spray or wall
+  splatter, a limb coming off sprays none, and an enemy's blow leaves no blood on your screen; the sounds, the view jolt
+  and the limbs coming off stay (the cut stumps still show their wound texture). Try both. The label is AI-written.
+
+MetaHuman clothes:
+- [ ] **`Content/Fab/MetaHuman/ClassicClogs`, `OA_ClassicClogs`, `WI_ClassicClogs`** (113 files) can't be loaded: they
+  were saved by a newer Unreal than 5.7 ("Custom version is too new", 2026-11-17 log). That is what crashed the editor
+  when it tried to save them. Delete those three, and get outfits whose Fab download is for 5.7.
 
 Other content:
 - [ ] **Credits screen text and design** (required, ROADMAP Milestone 2): CC BY 4.0 credits for Dramatic Death
@@ -79,9 +86,20 @@ Story (Milestone 8 / 9, GDD section 9):
 
 Newest first. Each item's detail is in its TASKS.md entry (same date).
 
+**Sanity, 2026-11-17 (GDD 7.2; TECHNICAL_ARCHITECTURE.md *Sanity*; tuning in `DA_Sanity`)**
+- [ ] Play in the dark for a while (it drains about 1 a second; 0.5 with your flashlight on), or type `Sanity 40` /
+  `Sanity 10` / `Sanity 0` in the console; `th.SanityDebug 1` shows the value. Listen: the heartbeat (from 60 down),
+  the fake footsteps and enemy sounds (from 70 down; `Hallucinate Footsteps`, `Hallucinate StalkerMoan`, ... plays one
+  now), the aim wandering (from 50 down), the edges of the view darkening and pulsing with the heartbeat (from 40 down; `DA_Sanity` → Blackout). At 0 a fake zombie runs at you: let it reach you, then shoot one
+  (`Hallucinate FakeEnemy` sends one). Is it scary, too often, too loud? Does the drift fight your aim?
+- [ ] After the first-play fixes: the fake zombie now runs facing you, and `Hallucinate Footsteps` / `Hallucinate Running` should be clearly heard (nearer, louder, never behind a wall). Still too quiet? `DA_Sanity` → Hallucinations → Footsteps → Volume.
+- [ ] With a second player: does staying together keep you sane (no "alone" drain within 15 m, slow recovery within 6 m)?
+- [ ] **A smoke effect of your own** for the fake enemy dissolving (`DA_Sanity` → Fake Enemy Shot Effect): it uses your
+  charger dust (`NS_ChargerWallDust`) at 1.5x for now. A darker, longer, rising smoke would read better.
+
 **Playtest fixes and mutant animations, 2026-11-16: ENEMY_PLAYTESTS.md, first section**
 - [ ] The Priest's limbs no longer black; no spike where a limb was cut; the charger's stomps on its feet and quieter;
-  the charger's mutant moves and its dizzy stun on its feet after a crash or miss, and its crash dust; an armless
+  the charger's mutant moves and its dizzy stun on its feet after a wall crash (a miss no longer stuns it, 2026-11-17); an armless
   zombie's bite; a zombie hit from behind; blood on the sirens' faces (open the editor once so the bloodied skin
   material compiles).
 

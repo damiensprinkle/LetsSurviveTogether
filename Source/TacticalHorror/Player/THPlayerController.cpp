@@ -4,6 +4,7 @@
 #include "UI/THAmmoWidget.h"
 #include "UI/THStatusWidget.h"
 #include "Player/THCameraModifier.h"
+#include "Player/Components/THSanityComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Multiplayer/THSessionSubsystem.h"
 #include "GameMapsSettings.h"
@@ -122,6 +123,34 @@ void ATHPlayerController::WeaponLight()
 	if (UTHWeaponComponent* Weapons = GetPawn() ? GetPawn()->FindComponentByClass<UTHWeaponComponent>() : nullptr)
 	{
 		Weapons->ToggleWeaponLight();
+	}
+}
+
+void ATHPlayerController::Sanity(float Value)
+{
+	ServerSetSanity(Value);
+}
+
+void ATHPlayerController::ServerSetSanity_Implementation(float Value)
+{
+	if (UTHSanityComponent* Mind = GetPawn() ? GetPawn()->FindComponentByClass<UTHSanityComponent>() : nullptr)
+	{
+		Mind->SetSanity(Value);
+	}
+}
+
+void ATHPlayerController::Hallucinate(const FString& Name)
+{
+	if (UTHSanityComponent* Mind = GetPawn() ? GetPawn()->FindComponentByClass<UTHSanityComponent>() : nullptr)
+	{
+		if (Name.Equals(TEXT("FakeEnemy"), ESearchCase::IgnoreCase))
+		{
+			Mind->SendFakeEnemy();
+		}
+		else
+		{
+			Mind->PlayHallucination(Name.IsEmpty() ? NAME_None : FName(*Name));
+		}
 	}
 }
 

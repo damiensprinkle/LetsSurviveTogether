@@ -88,6 +88,7 @@ BLOOD_DROPLET_CHANNEL = 'ECC_BLOOD_DROPLETS'    # unreal.CollisionChannel: ECC_G
 def flesh():
     """No bullet hole: wound effects at the hit, blood on whatever is behind."""
     impact = unreal.THSurfaceImpact()
+    impact.set_editor_property('is_blood', True)  # hidden for a player with Blood off in Settings
     impact.set_editor_property('effect', load(BLOOD_ENTRANCE))
     impact.set_editor_property('exit_effect', load(BLOOD_EXIT))
     impact.set_editor_property('effect_parameters', BLOOD_PARAMETERS)

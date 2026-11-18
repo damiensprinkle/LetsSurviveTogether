@@ -1,7 +1,7 @@
 # Roadmap
 
 Milestones 1–6 and 9 come from GDD.md section 15 (goals and exit criteria); 7 (loadout zone) and 8 (story) were added by the developer. This file tracks status and the concrete work under each.
-Day-to-day details and "what was just done" live in TASKS.md. Status as of **2026-11-10**; story and milestones 7-9 updated **2026-11-13**; Milestone 4 updated **2026-11-14**.
+Day-to-day details and "what was just done" live in TASKS.md. Status as of **2026-11-17** (reviewed with the developer).
 
 Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly done · ⬜ not started · ❓ needs a design decision first
 
@@ -9,16 +9,18 @@ Legend: ✅ done · 🟡 built, needs play-testing in the editor · 🔧 partly 
 
 ## Now: the next few sessions, in order
 
-1. ✅ **Content cleanup** (2026-11-04/05, see *Content pipeline*): deleting, archiving, the folder moves and the animation renaming are done. Left from it: a new-gun checklist.
-2. 🔧 **Automated testing** (2026-11-05, TESTING.md): 20 tests, about 200 s at the time; more since, the current list is in TESTING.md (`Scripts/run_tests.ps1`): ✅ unit, weapon data and content tests; ✅ functional tests in a play session (fire, full auto, reload, switching, both lights, shot damage); ✅ a multiplayer test (listen server + client: shots, reloads, weapon switch, both lights seen by the other player). They found and fixed two bugs: bodies couldn't be hit by bullets, and a crash in the third-person animation. ⬜ Later: screenshot tests once the HUD look is settled; a test per new feature (doors, downed, hit feedback, enemies, friendly fire).
-3. ✅ **Two-player play test** (Milestone 1 exit; two PCs, 2026-11-09): host from the main menu, join from a second game instance (or a second PC), go through the checklist in TASKS.md. Includes hearing each other's footsteps, flashlights and weapon lights, Leave Game.
-4. 🔧 **Test range** (2026-11-13: an internal testing tool only, not part of the game) (2026-11-05: the Fab firing range imported as `Maps/L_FiringRange`, walkable, lit with `BP_OverheadLight`, with a ceiling, the template door and an empty room behind it; next spray targets; see TASKS.md *Where we left off*) (an early piece of Milestone 7's firing range): a small map with a grid wall at known distances and a few targets, to check the M4A4 spray against CS2 and tune recoil. Separate from the tests' own map (`/Game/Tests/Maps/L_FunctionalTests`).
-5. 🔧 **Hit feedback**: ✅ bullet holes by surface; ✅ blood on enemies; ✅ being hit: view jolt and blood on the screen (2026-11-11); ⬜ hit-confirm audio cue, a hurt sound.
-6. 🔧 **Doors and downed / revive** (Milestone 3), then enemies: ✅ the template's doors, key locks, keypad and valve door work in co-op (2026-11-07); ✅ downed rules decided (2026-11-09, Milestone 3); ✅ downed made visible and shooting blocked, solo players die instead (2026-11-11); ⬜ play-test downed / revive in co-op.
-7. ✅ **Enemy test map** (2026-11-09): `/Game/Maps/L_EnemyTest`, a small dark level with a navigation mesh for the first enemies (Milestone 4), also Milestone 3's dark test map.
-8. **Settings menu, much better** (developer, 2026-11-09): rebindable keys first (real input assets), then graphics; see Milestone 6.
+Set 2026-11-17:
 
-Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting play-tested), crosshairs and ammo HUD, flashlights, third-person reload magazine, CS2 M4A4 spray.
+1. ⬜ **Commit and push**: everything since `e638aa6` is uncommitted (the charger's wall crash, misses, settling limbs, the voice cut on death, the camera lag fix, blood setting, sanity, the magazine fix). Check the GitHub LFS quota before pushing (DEVELOPER_TODO.md, Git).
+2. 🔧 **Enemy audio** (ENEMY_ASSETS_TODO.md *Still to get*): sounds the developer brings in (the Siren's voice lines with words, being recorded; a female zombie voice pack; the stalker's laugh), each a drop-in except the female voices, which need a voice set per look (code, when the pack is here).
+3. ⬜ **Mission framework, sized to the story** (Milestone 5): objectives, triggers for scripted moments (the elevator ride, the checkpoint where Hunters charge in), failure and restart, save points. Milestone 9 needs it, and it is mostly code, so it doesn't wait on the level design.
+4. ⬜ **Settings menu, much better** (developer, 2026-11-09): rebindable keys first (real input assets, Milestone 2 *Input*), then graphics; see Milestone 6.
+5. ⬜ **Play-test downed / revive in co-op** (Milestone 3): built 2026-11-11, never tried with two players.
+6. ✅ **Hit feedback**: bullet holes by surface; blood on enemies; hit sounds (2026-11-09); being hit: view jolt and blood on the screen (2026-11-11); a Blood on / off setting (2026-11-17).
+
+Ongoing: 🔧 **Automated testing** (TESTING.md, `Scripts/run_tests.ps1`): unit, data, content, functional, multiplayer and enemy tests; a test per new feature. ⬜ Later: screenshot tests once the HUD look is settled. 🔧 **Test range** (`Maps/L_FiringRange`, an internal tool only, not part of the game).
+
+Done recently: sanity (heartbeat, wandering aim, sound hallucinations, the view darkening at the edges, a fake enemy at the bottom; 2026-11-17/18, played and liked); the dropped magazine no longer falls in front of the eyes when crouched (2026-11-18); a Blood on / off setting (2026-11-17); enemies (five types, perception, the director, dismemberment, 2026-11-09 to 11-17); the enemy test map `L_EnemyTest` (2026-11-09); the two-player test (2026-11-09); content cleanup (2026-11-05); camera rotation lag removed, so flicks are sharp (2026-11-17); GitHub backup, main menu with Host / Join, crosshairs and ammo HUD, flashlights, third-person reload magazine, CS2 M4A4 spray.
 
 ---
 
@@ -58,8 +60,8 @@ Done recently: GitHub backup (2026-11-03), main menu with Host / Join (hosting p
 **HUD and feedback**
 - ✅ **Custom crosshairs** (2026-11-03, template dot fixed 2026-11-04): 8 styles (the developer's images), picked in Settings with size and R / G / B sliders, saved per player; hidden while aiming down sights; replaces the template's dot but keeps its interaction hand. ⬜ Later, if wanted: spread that grows with `GetCurrentInaccuracy()`, a default style per weapon, opacity.
 - ✅ Ammo counter (2026-11-03): magazine / reserve, RELOADING, red when low (no fire-mode label: the developer doesn't want fire-mode switching shown). ⬜ Later: a "press R" hint when empty, if wanted.
-- ⬜ **Hit confirmation as an audio cue, no on-screen hit marker** (developer's choice): a short sound for the shooter only when the host confirms the hit, with distinct sounds for headshots and kills
-- ⬜ **Blood splatter** on hits to players and enemies: a Niagara burst at the hit point, blood decals on nearby walls and floor, and a damage sound. Played on every machine from the existing shot multicast. A player setting turns blood down or off.
+- ✅ **Hit confirmation as an audio cue, no on-screen hit marker** (developer's choice; 2026-11-09, `DA_ImpactSurfaces` and the enemies' Kill Sounds): a flesh sound on a body shot, guts on a headshot, a kill sound, and Character Hit when a teammate is shot. Played at the hit for everyone in earshot (not a shooter-only cue; developer 2026-11-17: counts as done)
+- ✅ **Blood splatter** on hits: enemies (wound effects, splatter behind, 2026-11-09); being hit (blood on the screen, 2026-11-11); **Settings → Display → Blood** on / off, per player (2026-11-17, `UTHDisplaySettingsSubsystem`)
 - 🔧 **Bullet holes and impact effects by surface:** (2026-11-09: decals by surface done with the Fab pack, `DA_ImpactSurfaces`; levels still need Physical Materials, and particles, sounds, a decal cap and fade-out are still to do.) Physical Materials (concrete, metal, wood, glass, flesh, dirt) on level materials, each picking decal, particles and sound. Candidate decal pack on Fab. Cap decal count and fade them out.
 - ⬜ Damage direction indicator, low-health screen effect
 
@@ -95,23 +97,28 @@ Needed before more guns: there are many animation assets from several packs (Lyr
   - ⬜ Death: spectate a teammate until the mission ends or a respawn point
 - 🟡 Health and damage (`UTHHealthComponent`), friendly fire switch on the GameMode
 - 🔧 Audio: footsteps by movement mode, gun foley, settings menu volume sliders. ✅ Music and ambience (2026-11-11: two layers, a Music & ambience slider, menu theme); ✅ voices: enemies (hunter angry, ambusher scared, stalker gasping and moaning) and players (hurt, jump, death stinger). ⬜ Footsteps by surface (Physical Materials, shared with bullet impacts), reverb zones, an ambience bed (done: music and drones), music that reacts to danger
-- ⬜ **Sanity** (GDD 7.2): a per-player sanity value (replicated to its owner); low sanity adds weapon sway and local-only hallucinations (sounds, shapes); restored by lit areas and nearby teammates (❓ drains and restores to decide). **No HUD bar:** shown on an in-world item, e.g. a smartwatch on the wrist with heart rate (developer, 2026-11-11: an audible heartbeat getting faster as sanity drops, from HealthDamageSFX's heartbeats) (raise the arm to look at it, first person and third person), or a journal (❓ which item). Tuning in a data asset.
+- 🟡 **Sanity** (GDD 7.2; built 2026-11-17, `UTHSanityComponent`, `DA_Sanity`): per player, 0-100, worked out on the server and sent to its player only. Drains in the dark (own light halves it) and alone (never solo); back in lit rooms, near a teammate, and when calm. Below 60 a heartbeat (faster and louder), below 50 the aim wanders, below 40 the edges of the view darken with each beat (2026-11-18), below 70 sounds that aren't there (fake footsteps, the enemies' own sounds), at 0 a fake zombie rushes the player and vanishes (shot: dissolves in a puff). Only on that player's machine. ⬜ Try in play; ⬜ a smoke effect of its own for the dissolve (now the charger's dust); ⬜ later, if wanted: an in-world item (watch / journal), visual hallucinations (shapes at the edge of the light), enemies as a drain
 - ⬜ Environmental lighting pass for a dark test map (a first dark test map exists: `L_EnemyTest`)
 - ⬜ **Exit:** players navigate a dark test map with their equipment and interact with objects
 
 ## Milestone 4: Enemies and AI
 - ✅ `ATHEnemyCharacter` (2026-11-09): the capsule ignores the Weapon channel and the body's bones take hits (headshots); `UTHHealthComponent` with no downed state, 200 health (2026-11-10); blood (wound effects, splatter behind, no bullet hole on flesh); ragdoll on death, replicated. Yarrawah Interactive's zombie M04; every zombie and creature body checked in a line-up (2026-11-10)
 - Direction (GDD 7.1): few enemies, fast and hard-hitting; tension from stalking and subtle audio rather than numbers.
-- 🟡 **Behaviours** (2026-11-10): Hunter, Stalker, Ambusher (GDD 7's archetypes), Charger and Siren (2026-11-12/13; ENEMIES.md), a dropdown per placed enemy (`UTHEnemyBehavior` data assets with their tuning). ⬜ Mimic; ⬜ the story's variants (sleepers that act normal, newly infected who speak)
+- 🟡 **Behaviours** (2026-11-10): Hunter, Stalker, Ambusher (GDD 7's archetypes), Charger and Siren (2026-11-12/13; ENEMIES.md; problems to try in ENEMY_PLAYTESTS.md), a dropdown per placed enemy (`UTHEnemyBehavior` data assets with their tuning). ⬜ Mimic; ⬜ the story's variants (sleepers that act normal, newly infected who speak)
 - 🟡 AI perception (2026-11-10): ✅ sight, ✅ hearing of gunshots and footsteps, ✅ wander, investigate, chase, attack (C++ state machine, `ATHEnemyAIController`). 🟡 doors as noises (2026-11-13); ⬜ **voice** as a noise. Voice (developer, 2026-11-09): talking in proximity voice is heard by enemies near the speaker with the same weight as footsteps; talking over the **walkie-talkie** carries more weight (it is louder and travels further), so long-range radio calls are a risk. 🟡 Walls muffling sounds (2026-11-13); 🟡 darkness and flashlights in what enemies see (2026-11-13)
 - ✅ Enemies can finish off downed players (developer, 2026-11-09; built 2026-11-10: an enemy's blow kills a downed player)
 - 🟡 Stalking (2026-11-10): the stalker keeps behind a player out of view, slips away when looked at or approached, and now and then strikes from behind. 🟡 Quiet, positional audio tells (gasping as it follows, lure footsteps, lights flickering near it) and the moan before a strike (2026-11-11/13; it doesn't speak or whisper, developer 2026-11-14)
 - ⬜ **Difficulty settings** (host's choice, applied by the server): enemy damage first, then possibly enemy speed / health, and helpers for horror players new to tactical shooting that don't remove the skill (e.g. gentler recoil, more reserve ammo). Chosen per mission, shown in the lobby
 - 🟡 Hit reactions (2026-11-13/14: staggers by side and weight, limbs off, limping, crawling; Mixamo zombie flinches), death and ragdoll (done), blood (done, shared with Milestone 2)
+- 🟡 **Dismemberment** (2026-11-14/17): limbs and heads come off as physics pieces in the body's colours, then settle and sleep; stumps capped; gore sounds
+- 🟡 **Charger** (2026-11-12/17): charges, breaks doors, crashes into walls head-on or at an angle (sound, shake, the developer's dust `NS_ChargerWallDust`, a stumble); a miss pulls up without a stun; run speed 180, below the player's walk
+- ✅ **3D audio** (2026-11-16): Steam Audio 4.8.1, binaural enemy voices and steps; heard in play and kept (developer, 2026-11-17)
+- 🔧 **Enemy audio** (ENEMY_ASSETS_TODO.md): the Siren's voice lines with words (the developer is recording them), a female zombie voice pack (needs a voice set per look), the stalker's laugh (optional)
 - 🟡 Replication and server authority (✅ AI on the server, movement and attacks replicated); 🟡 the director (2026-11-13: `ATHDirector`, waves from spawn points out of sight; problems to try in ENEMY_PLAYTESTS.md)
 - 🟡 **Exit:** a server-controlled enemy detects and engages players in a multiplayer test: ✅ `Multiplayer.EnemyAttack` (2026-11-10); ⬜ play-tested with two players
 
 ## Milestone 5: Mission Framework
+- Next after the enemy audio (2026-11-17). With the story (Milestone 8) this is one continuous run through Aegis rather than separate missions: objectives and triggers for scripted moments (the elevator ride, the checkpoint where Hunters charge in) and save points come first; extraction and debrief matter less.
 - ⬜ Mission data assets, objectives, dependencies, extraction
 - ⬜ Failure and restart (uses the "everyone down" rule), debrief using `ATHPlayerState` stats
 - ⬜ **Found-equipment unlocks** (GDD 12.1): the weapon light, suppressor, extra guns and the flashlight's blacklight mode start locked; finding one in a mission unlocks it for good once the mission is completed. Each player has to pick it up themselves (decided 2026-11-04); saved per player (a SaveGame). The hand flashlight is given right away.
@@ -123,7 +130,7 @@ Needed before more guns: there are many animation assets from several packs (Lyr
 - ⬜ Lobby: ready-up, player list
 - ⬜ **Online with Steam:** OnlineSubsystemSteam, a Steam App ID, invites / join via friends list. Keep the code on the OnlineSubsystem / session interfaces so LAN and Steam are the same path.
 - ⬜ **Voice chat** (developer, 2026-11-09): in-game proximity voice (heard by players near you, positioned in the world) and a **walkie-talkie** for long range (push-to-talk, heard by the whole team). Both feed enemy hearing (Milestone 4). Provider to decide with the session provider (Steam / EOS).
-- ⬜ Settings menu: graphics, audio (exists), controls / key binding, crosshair (exists), muzzle-flash brightness, blood
+- ⬜ Settings menu: graphics, audio (exists), controls / key binding, crosshair (exists), muzzle-flash brightness, blood (exists: on / off)
 - ⬜ The developer's Widget Blueprints for the menus (main menu, settings, lobby, HUD), replacing the placeholder C++ layouts (see AI_CONTENT.md)
 - ⬜ **Exit:** host or join over Steam, ready up, start a mission together
 
@@ -169,6 +176,6 @@ Now the opening of the story (GDD 9.5), developer 2026-11-13:
 ## Decisions needed (GDD open questions)
 - ❓ Friendly fire default (on / off / reduced)
 - ❓ Ammo economy: reserve sizes, pickups, resupply between missions
-- ❓ How much gore: blood only, or also dismemberment / gibs
+- ✅ How much gore: blood and dismemberment (limbs and heads come off; built 2026-11-14/17, ENEMIES.md)
 - ❓ Crosshair while hip-firing: always, optional, or none (immersion vs readability)
 - ✅ Name of the organism: the Quorum (2026-11-13, Milestone 8)
